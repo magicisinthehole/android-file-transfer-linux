@@ -41,10 +41,78 @@
 #include <stdlib.h>
 #include <sys/types.h>
 #include <sys/stat.h>
+#ifndef _WIN32
 #include <sys/ioctl.h>
 #include <dirent.h>
-#include <errno.h>
 #include <unistd.h>
+#else
+#include <io.h>
+#include <direct.h>
+#include <windows.h>
+#include <urlmon.h>
+#pragma comment(lib, "urlmon.lib")
+#undef CreateDirectory
+#undef GetObject
+#undef GetVersion
+#define STDOUT_FILENO _fileno(stdout)
+#define isatty _isatty
+#define strncasecmp _strnicmp
+#define mkdir _mkdir
+// Windows stat macros
+#ifndef S_ISDIR
+#define S_ISDIR(m) (((m) & _S_IFMT) == _S_IFDIR)
+#endif
+#ifndef S_ISREG
+#define S_ISREG(m) (((m) & _S_IFMT) == _S_IFREG)
+#endif
+// Windows directory operations
+typedef struct {
+	HANDLE hFind;
+	WIN32_FIND_DATAA findData;
+	bool first;
+} WIN_DIR;
+
+struct dirent {
+	char d_name[MAX_PATH];
+};
+
+static WIN_DIR* opendir(const char* name) {
+	WIN_DIR* dir = new WIN_DIR;
+	std::string searchPath = std::string(name) + "\\*";
+	dir->hFind = FindFirstFileA(searchPath.c_str(), &dir->findData);
+	dir->first = true;
+	if (dir->hFind == INVALID_HANDLE_VALUE) {
+		delete dir;
+		return nullptr;
+	}
+	return dir;
+}
+
+static struct dirent* readdir(WIN_DIR* dir) {
+	static struct dirent entry;
+	if (!dir) return nullptr;
+
+	if (dir->first) {
+		dir->first = false;
+	} else {
+		if (!FindNextFileA(dir->hFind, &dir->findData))
+			return nullptr;
+	}
+
+	strncpy(entry.d_name, dir->findData.cFileName, MAX_PATH);
+	return &entry;
+}
+
+static int closedir(WIN_DIR* dir) {
+	if (dir) {
+		FindClose(dir->hFind);
+		delete dir;
+	}
+	return 0;
+}
+#define DIR WIN_DIR
+#endif
+#include <errno.h>
 
 namespace
 {
@@ -83,7 +151,12 @@ namespace cli
 		{
 			const char *cols = getenv("COLUMNS");
 			_terminalWidth = cols? atoi(cols): 80;
-#ifdef TIOCGSIZE
+#ifdef _WIN32
+			CONSOLE_SCREEN_BUFFER_INFO csbi;
+			if (GetConsoleScreenBufferInfo(GetStdHandle(STD_OUTPUT_HANDLE), &csbi)) {
+				_terminalWidth = csbi.srWindow.Right - csbi.srWindow.Left + 1;
+			}
+#elif defined(TIOCGSIZE)
 			struct ttysize ts;
 			ioctl(STDIN_FILENO, TIOCGSIZE, &ts);
 			_terminalWidth = ts.ts_cols;
@@ -195,6 +268,18 @@ namespace cli
 			AddCommand("device-reboot", "reboots device (Microsoft specific?)", make_function([this]() -> void { RebootDevice(); }));
 		}
 
+#ifdef _WIN32
+		// Windows USB driver management commands
+		AddCommand("driver-list", "lists connected Zune devices and their driver status",
+			make_function([this]() -> void { ListDriverStatus(); }));
+		AddCommand("driver-install", "installs WinUSB driver for Zune device",
+			make_function([this]() -> void { InstallWinUSBDriver(); }));
+		AddCommand("driver-check", "checks and prompts to install WinUSB driver if needed",
+			make_function([this]() -> void { CheckAndInstallDriver(); }));
+		AddCommand("driver-restore", "restores original driver from backup",
+			make_function([this]() -> void { RestoreDriverBackup(); }));
+#endif
+
 		AddCommand("test-property-list", "test GetObjectPropList on given object",
 			make_function([this](const Path &path) -> void { TestObjectPropertyList(path); }));
 
@@ -211,10 +296,57 @@ namespace cli
 	Session::~Session()
 	{ }
 
+#ifdef _WIN32
+	bool DownloadMtpzData(const std::string& path)
+	{
+		// Try to download .mtpz-data file from GitHub
+		const char* url = "https://raw.githubusercontent.com/kbhomes/libmtp-zune/master/src/.mtpz-data";
+
+		mtp::print("MTPZ keys not found. Attempting to download from ", url);
+
+		// Use URLDownloadToFileA from urlmon.dll
+		HRESULT hr = URLDownloadToFileA(NULL, url, path.c_str(), 0, NULL);
+
+		if (SUCCEEDED(hr))
+		{
+			mtp::print("Successfully downloaded MTPZ keys to ", path);
+			return true;
+		}
+		else
+		{
+			mtp::error("Failed to download MTPZ keys (error code: ", hr, ")");
+			mtp::error("Please manually download from: ", url);
+			mtp::error("And save it to: ", path);
+			return false;
+		}
+	}
+#endif
+
 	std::string Session::GetMtpzDataPath()
 	{
+#ifdef _WIN32
+		char * home = getenv("USERPROFILE");
+		if (!home)
+			home = getenv("HOMEPATH");
+		std::string path = std::string(home? home: ".") + "\\.mtpz-data";
+
+		// Check if file exists, if not try to download it
+		FILE* f = fopen(path.c_str(), "r");
+		if (f)
+		{
+			fclose(f);
+		}
+		else
+		{
+			// File doesn't exist, try to download
+			DownloadMtpzData(path);
+		}
+
+		return path;
+#else
 		char * home = getenv("HOME");
 		return std::string(home? home: ".") + "/.mtpz-data";
+#endif
 	}
 
 	bool Session::SetFirstStorage()
@@ -356,7 +488,7 @@ namespace cli
 		using namespace mtp;
 		if (_interactive && _showPrompt)
 		{
-			print("android file transfer for linux version ", GetVersion());
+			print("android file transfer for linux version ", mtp::GetVersion());
 			print(_gdi.Manufacturer, " ", _gdi.Model, " ", _gdi.DeviceVersion);
 			print("extensions: ", _gdi.VendorExtensionDesc);
 			//print(_gdi.SerialNumber); //non-secure
@@ -688,7 +820,11 @@ namespace cli
 		mtp::ObjectFormat format = static_cast<mtp::ObjectFormat>(_session->GetObjectIntegerProperty(srcId, mtp::ObjectProperty::ObjectFormat));
 		if (format == mtp::ObjectFormat::Association)
 		{
+#ifdef _WIN32
+			mkdir(dst.c_str());
+#else
 			mkdir(dst.c_str(), 0700);
+#endif
 			auto obj = _session->GetObjectHandles(_cs, mtp::ObjectFormat::Any, srcId);
 			for(auto id : obj.ObjectHandles)
 			{
@@ -768,10 +904,17 @@ namespace cli
 
 	namespace
 	{
+#ifdef _WIN32
+		struct _stat Stat(const std::string &path)
+		{
+			struct _stat st = {};
+			if (_stat(path.c_str(), &st))
+#else
 		struct stat Stat(const std::string &path)
 		{
 			struct stat st = {};
 			if (stat(path.c_str(), &st))
+#endif
 				throw std::runtime_error(std::string("stat failed: ") + strerror(errno));
 			return st;
 		}
@@ -780,7 +923,7 @@ namespace cli
 	void Session::Put(mtp::ObjectId parentId, const LocalPath &src, const std::string &targetFilename, mtp::ObjectFormat format)
 	{
 		using namespace mtp;
-		struct stat st = Stat(src);
+		auto st = Stat(src);
 
 		if (S_ISDIR(st.st_mode))
 		{
@@ -863,7 +1006,7 @@ namespace cli
 		try
 		{
 			ObjectId parentDir;
-			struct stat st = Stat(src);
+			auto st = Stat(src);
 			if (S_ISREG(st.st_mode))
 			{
 				std::string filename;
@@ -1165,6 +1308,5 @@ namespace cli
 
 		_library->AddTrack(album, songId);
 	}
-
 
 }

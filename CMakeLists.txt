@@ -33,6 +33,10 @@ if (${CMAKE_SYSTEM_NAME} MATCHES "Haiku")
 	set(USB_BACKEND_HAIKU TRUE)
 endif()
 
+if (WIN32)
+	set(USB_BACKEND_WINDOWS TRUE)
+endif()
+
 set(CMAKE_MODULE_PATH ${CMAKE_CURRENT_SOURCE_DIR}/cmake ${CMAKE_MODULE_PATH})
 
 include(FindPkgConfig)
@@ -137,9 +141,6 @@ set(SOURCES
 	mtp/usb/BulkPipe.cpp
 	mtp/usb/Request.cpp
 
-	mtp/backend/posix/FileHandler.cpp
-	mtp/backend/posix/Exception.cpp
-
 	mtp/metadata/Metadata.cpp
 	mtp/metadata/Library.cpp
 
@@ -161,6 +162,8 @@ if (USB_BACKEND_LIBUSB)
 		mtp/backend/libusb/usb/Device.cpp
 		mtp/backend/libusb/usb/DeviceDescriptor.cpp
 		mtp/backend/libusb/usb/Exception.cpp
+		mtp/backend/posix/FileHandler.cpp
+		mtp/backend/posix/Exception.cpp
 	)
 	list(APPEND MTP_LIBRARIES ${LIBUSB_LIBRARIES})
 elseif (USB_BACKEND_DARWIN)
@@ -171,6 +174,8 @@ elseif (USB_BACKEND_DARWIN)
 		mtp/backend/darwin/usb/Context.cpp
 		mtp/backend/darwin/usb/Device.cpp
 		mtp/backend/darwin/usb/DeviceDescriptor.cpp
+		mtp/backend/posix/FileHandler.cpp
+		mtp/backend/posix/Exception.cpp
 		mtp/backend/darwin/usb/Exception.cpp
 		mtp/backend/darwin/usb/Interface.cpp
 	)
@@ -182,6 +187,15 @@ elseif (USB_BACKEND_HAIKU)
 		mtp/backend/haiku/usb/DeviceDescriptor.cpp
 	)
 	list(APPEND MTP_LIBRARIES device)
+elseif (USB_BACKEND_WINDOWS)
+	add_definitions(-DUSB_BACKEND_WINDOWS)
+	list(APPEND SOURCES
+		mtp/backend/windows/usb/Context.cpp
+		mtp/backend/windows/usb/Device.cpp
+		mtp/backend/windows/usb/DeviceDescriptor.cpp
+		mtp/backend/windows/usb/Interface.cpp
+	)
+	list(APPEND MTP_LIBRARIES setupapi winusb urlmon shlwapi)
 else()
 	list(APPEND SOURCES
 		mtp/backend/linux/usb/Endpoint.cpp
@@ -249,6 +263,9 @@ elseif (USB_BACKEND_DARWIN)
 	target_include_directories(${LIB_NAME} PUBLIC mtp/backend/darwin)
 elseif (USB_BACKEND_HAIKU)
 	target_include_directories(${LIB_NAME} PUBLIC mtp/backend/haiku)
+elseif (USB_BACKEND_WINDOWS)
+	target_include_directories(${LIB_NAME} PUBLIC mtp/backend/windows)
+	target_include_directories(${LIB_NAME} PRIVATE mtp/backend/windows)
 else()
 	target_include_directories(${LIB_NAME} PUBLIC mtp/backend/linux)
 endif()

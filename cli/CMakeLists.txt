@@ -77,4 +77,3 @@ endif()
 
 add_executable(set-zune-guid set_zune_guid_aftl.cpp)
 target_link_libraries(set-zune-guid ${MTP_LIBRARIES} ${CMAKE_THREAD_LIBS_INIT})
-

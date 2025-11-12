@@ -7,3 +7,14 @@ build
 *.user
 doc
 .vscode
+
+# CMake-generated Makefiles
+Makefile
+*/Makefile
+
+# Backup files
+*.bak
+
+# Compiled binaries
+cli/aft-mtp-cli
+cli/set-zune-guid

@@ -1,9 +1,12 @@
 #include <mtp/metadata/Library.h>
 #include <mtp/ptp/Session.h>
 #include <mtp/ptp/ObjectPropertyListParser.h>
+#include <mtp/ptp/ByteArrayObjectStream.h>
 #include <mtp/log.h>
 #include <algorithm>
 #include <unordered_map>
+#include <iomanip>
+#include <iostream>
 
 namespace mtp
 {
@@ -190,7 +193,7 @@ namespace mtp
 	}
 
 
-	Library::ArtistPtr Library::CreateArtist(std::string name)
+	Library::ArtistPtr Library::CreateArtist(std::string name, const std::string& guid)
 	{
 		if (name.empty())
 			name = UknownArtist;
@@ -199,29 +202,225 @@ namespace mtp
 		artist->Name = name;
 		artist->MusicFolderId = GetOrCreate(_musicFolder, name);
 
+		// Convert GUID string to 16-byte binary if provided (needed for albums regardless of artist support)
+		if (!guid.empty()) {
+			// Parse GUID string (format: "45a663b5-b1cb-4a91-bff6-2bef7bbfdd76")
+			// GUIDs use mixed endianness: first 3 components little-endian, last 8 bytes big-endian
+			std::string hex = guid;
+			// Remove dashes
+			hex.erase(std::remove(hex.begin(), hex.end(), '-'), hex.end());
+
+			if (hex.length() == 32) {
+				artist->Guid.resize(16);
+
+				// Component 1: 4 bytes (32-bit) - little-endian
+				for (int i = 3; i >= 0; --i) {
+					artist->Guid[3 - i] = static_cast<u8>(std::stoul(hex.substr(i * 2, 2), nullptr, 16));
+				}
+
+				// Component 2: 2 bytes (16-bit) - little-endian
+				for (int i = 1; i >= 0; --i) {
+					artist->Guid[4 + (1 - i)] = static_cast<u8>(std::stoul(hex.substr(8 + i * 2, 2), nullptr, 16));
+				}
+
+				// Component 3: 2 bytes (16-bit) - little-endian
+				for (int i = 1; i >= 0; --i) {
+					artist->Guid[6 + (1 - i)] = static_cast<u8>(std::stoul(hex.substr(12 + i * 2, 2), nullptr, 16));
+				}
+
+				// Component 4: 8 bytes - big-endian (as-is)
+				for (size_t i = 0; i < 8; ++i) {
+					artist->Guid[8 + i] = static_cast<u8>(std::stoul(hex.substr(16 + i * 2, 2), nullptr, 16));
+				}
+			}
+		}
+
 		if (_artistSupported)
 		{
 			ByteArray propList;
 			OutputStream os(propList);
 
-			os.Write32(2); //number of props
+			// When GUID is provided, create metadata artist object (0xB218) with GUID
+			// This is what Windows does - single artist object with metadata
+			if (!artist->Guid.empty())
+			{
+				std::cout << "  Creating metadata artist object (0xB218) with GUID for: " << name << std::endl;
 
-			os.Write32(0); //object handle
-			os.Write16(static_cast<u16>(ObjectProperty::Name));
-			os.Write16(static_cast<u16>(DataTypeCode::String));
-			os.WriteString(name);
+				os.Write32(4); // 4 properties (matches Windows)
 
-			os.Write32(0); //object handle
-			os.Write16(static_cast<u16>(ObjectProperty::ObjectFilename));
-			os.Write16(static_cast<u16>(DataTypeCode::String));
-			os.WriteString(name + ".art");
+				// Property 1: 0xDAB0 (Zune_CollectionID) = 0 (Uint8)
+				os.Write32(0); // object handle
+				os.Write16(0xDAB0);
+				os.Write16(static_cast<u16>(DataTypeCode::Uint8));
+				os.Write8(0);
 
-			auto response = _session->SendObjectPropList(_storage, _artistsFolder, ObjectFormat::Artist, 0, propList);
-			artist->Id = response.ObjectId;
+				// Property 2: ObjectFilename (0xDC07)
+				os.Write32(0); // object handle
+				os.Write16(static_cast<u16>(ObjectProperty::ObjectFilename));
+				os.Write16(static_cast<u16>(DataTypeCode::String));
+				os.WriteString(name + ".art");
+
+				// Property 3: Zune GUID (0xDA97) - Uint128 (16 bytes)
+				os.Write32(0); // object handle
+				os.Write16(0xDA97);
+				os.Write16(static_cast<u16>(DataTypeCode::Uint128));
+				for (const auto& byte : artist->Guid) {
+					os.Write8(byte);
+				}
+
+				// Property 4: Name (0xDC44)
+				os.Write32(0); // object handle
+				os.Write16(static_cast<u16>(ObjectProperty::Name));
+				os.Write16(static_cast<u16>(DataTypeCode::String));
+				os.WriteString(name);
+
+				// Query object handles before creating artist (Windows does this)
+				auto handles = _session->GetObjectHandles(_storage, ObjectFormat::Any, Session::Root);
+
+				// Query property descriptions for 0xB218 format (Windows does this)
+				try {
+					_session->Operation9802(0xDAB0, 0xB218);
+					_session->Operation9802(0xDC07, 0xB218);
+					_session->Operation9802(0xDA97, 0xB218);
+					_session->Operation9802(0xDC44, 0xB218);
+				} catch (...) {
+					// Non-critical if device doesn't support these queries
+				}
+
+				// Create the metadata artist object (format 0xB218)
+				auto response = _session->SendObjectPropList(_storage, _artistsFolder, ObjectFormat::Artist, 0, propList);
+				artist->Id = response.ObjectId;
+
+				std::cout << "  ✓ Metadata artist object created (ID: 0x" << std::hex << artist->Id << std::dec << ")" << std::endl;
+
+				// Send empty object data (0 bytes) - required by MTP protocol
+				ByteArray empty_data;
+				IObjectInputStreamPtr empty_stream = std::make_shared<ByteArrayObjectInputStream>(empty_data);
+				_session->SendObject(empty_stream);
+
+				// Query all properties back to verify creation (Windows does this)
+				try {
+					ByteArray propList = _session->GetObjectPropertyList(
+						artist->Id,
+						ObjectFormat::Any,      // 0x00000000
+						ObjectProperty::All,    // 0xFFFFFFFF
+						0,                      // groupCode
+						0                       // depth
+					);
+					std::cout << "  ✓ Retrieved " << propList.size() << " bytes of property data from device" << std::endl;
+				} catch (const std::exception& e) {
+					std::cout << "  Warning: GetObjectPropertyList failed: " << e.what() << std::endl;
+				}
+			}
+			else
+			{
+				// No GUID - create regular artist object (2 properties)
+				os.Write32(2); //number of props
+
+				os.Write32(0); //object handle
+				os.Write16(static_cast<u16>(ObjectProperty::Name));
+				os.Write16(static_cast<u16>(DataTypeCode::String));
+				os.WriteString(name);
+
+				os.Write32(0); //object handle
+				os.Write16(static_cast<u16>(ObjectProperty::ObjectFilename));
+				os.Write16(static_cast<u16>(DataTypeCode::String));
+				os.WriteString(name + ".art");
+
+				auto response = _session->SendObjectPropList(_storage, _artistsFolder, ObjectFormat::Artist, 0, propList);
+				artist->Id = response.ObjectId;
+			}
 		}
 
 		_artists.insert(std::make_pair(name, artist));
 		return artist;
+	}
+
+	void Library::UpdateArtistGuid(ArtistPtr artist, const std::string& guid)
+	{
+		if (!artist) {
+			error("UpdateArtistGuid: artist is null");
+			return;
+		}
+
+		if (guid.empty()) {
+			debug("UpdateArtistGuid: GUID string is empty, nothing to update");
+			return;
+		}
+
+		// Parse GUID string (format: "45a663b5-b1cb-4a91-bff6-2bef7bbfdd76")
+		// GUIDs use mixed endianness: first 3 components little-endian, last 8 bytes big-endian
+		std::string hex = guid;
+		// Remove dashes
+		hex.erase(std::remove(hex.begin(), hex.end(), '-'), hex.end());
+
+		if (hex.length() != 32) {
+			error("UpdateArtistGuid: Invalid GUID format (expected 32 hex chars after removing dashes, got ", hex.length(), ")");
+			return;
+		}
+
+		std::cout << "UpdateArtistGuid: Updating artist '" << artist->Name << "' with GUID: " << guid << std::endl;
+
+		artist->Guid.resize(16);
+
+		// Component 1: 4 bytes (32-bit) - little-endian
+		for (int i = 3; i >= 0; --i) {
+			artist->Guid[3 - i] = static_cast<u8>(std::stoul(hex.substr(i * 2, 2), nullptr, 16));
+		}
+
+		// Component 2: 2 bytes (16-bit) - little-endian
+		for (int i = 1; i >= 0; --i) {
+			artist->Guid[4 + (1 - i)] = static_cast<u8>(std::stoul(hex.substr(8 + i * 2, 2), nullptr, 16));
+		}
+
+		// Component 3: 2 bytes (16-bit) - little-endian
+		for (int i = 1; i >= 0; --i) {
+			artist->Guid[6 + (1 - i)] = static_cast<u8>(std::stoul(hex.substr(12 + i * 2, 2), nullptr, 16));
+		}
+
+		// Component 4: 8 bytes - big-endian (as-is)
+		for (size_t i = 0; i < 8; ++i) {
+			artist->Guid[8 + i] = static_cast<u8>(std::stoul(hex.substr(16 + i * 2, 2), nullptr, 16));
+		}
+
+		// Verbose logging to confirm GUID was set
+		std::cout << "  GUID bytes (hex): ";
+		for (size_t i = 0; i < artist->Guid.size(); ++i) {
+			if (i > 0) std::cout << ":";
+			std::cout << std::hex << std::setw(2) << std::setfill('0') << (int)artist->Guid[i];
+		}
+		std::cout << std::dec << std::endl;
+		std::cout << "  Artist GUID vector size: " << artist->Guid.size() << " bytes" << std::endl;
+	}
+
+	void Library::ValidateArtistGuid(const std::string& artist_name, const std::string& track_name, const std::string& guid)
+	{
+		if (!_artistSupported) {
+			debug("ValidateArtistGuid: Artist objects not supported by device");
+			return;
+		}
+
+		if (guid.empty()) {
+			debug("ValidateArtistGuid: GUID is empty, skipping validation");
+			return;
+		}
+
+		// NOTE: CreateArtist now creates the metadata artist object (0xB218) with GUID
+		// This function only needs to call Operation 0x922A to register the track context
+		std::cout << "ValidateArtistGuid: Registering track context with Operation 0x922A" << std::endl;
+		std::cout << "  Artist: " << artist_name << std::endl;
+		std::cout << "  Track: " << track_name << std::endl;
+
+		// Call Operation 0x922A to register track name for metadata retrieval
+		// This operation appears ~376ms after artist deletion in Windows capture (frame 5956)
+		// CRITICAL: This must be called even if property setting fails!
+		std::cout << "  Calling Operation 0x922A with track name: " << track_name << std::endl;
+		try {
+			_session->Operation922a(track_name);
+			std::cout << "  ✓ Operation 0x922A completed - track context registered" << std::endl;
+		} catch (const std::exception& e) {
+			error("ValidateArtistGuid: Operation 0x922A failed: ", e.what());
+		}
 	}
 
 	Library::AlbumPtr Library::GetAlbum(const ArtistPtr & artist, std::string name)
@@ -244,6 +443,19 @@ namespace mtp
 		ByteArray propList;
 		OutputStream os(propList);
 		bool sendYear = year != 0 && _albumDateAuthoredSupported;
+		bool hasGuid = !artist->Guid.empty();
+
+		// Verbose logging for album creation with GUID
+		if (hasGuid) {
+			debug("CreateAlbum: Creating album '", name, "' with Zune artist GUID");
+			debug("  Artist: ", artist->Name);
+			debug("  GUID (hex): ");
+			for (size_t i = 0; i < artist->Guid.size(); ++i) {
+				if (i > 0) std::cerr << ":";
+				std::cerr << hex(artist->Guid[i], 2);
+			}
+			std::cerr << std::endl;
+		}
 
 		os.Write32(3 + (sendYear? 1: 0)); //number of props
 
@@ -425,6 +637,90 @@ namespace mtp
 			gdi.Supports(OperationCode::SetObjectReferences) &&
 			gdi.Supports(ObjectFormat::AbstractAudioAlbum);
 		;
+	}
+
+	std::vector<Library::AlbumPtr> Library::GetAlbumsByArtist(const ArtistPtr & artist)
+	{
+		std::vector<AlbumPtr> result;
+		if (!artist)
+			return result;
+
+		for (auto& [key, album] : _albums) {
+			if (album->Artist == artist) {
+				result.push_back(album);
+			}
+		}
+		return result;
+	}
+
+	void Library::UpdateAlbumArtist(AlbumPtr album, ArtistPtr new_artist)
+	{
+		if (!album || !new_artist) {
+			error("UpdateAlbumArtist: null album or artist");
+			return;
+		}
+
+		debug("UpdateAlbumArtist: Updating album '", album->Name, "' to new artist '", new_artist->Name, "'");
+
+		// Update local cache
+		album->Artist = new_artist;
+
+		// Update on device via MTP
+		if (_artistSupported) {
+			_session->SetObjectProperty(
+				album->Id,
+				ObjectProperty::ArtistId,
+				(u64)new_artist->Id.Id
+			);
+			debug("  ✓ Album ArtistId property updated on device");
+		} else {
+			// For devices without artist support, update artist name string
+			_session->SetObjectProperty(
+				album->Id,
+				ObjectProperty::Artist,
+				new_artist->Name
+			);
+			debug("  ✓ Album Artist property (string) updated on device");
+		}
+	}
+
+	std::vector<ObjectId> Library::GetTracksForAlbum(const AlbumPtr & album)
+	{
+		std::vector<ObjectId> result;
+		if (!album)
+			return result;
+
+		LoadRefs(album);
+		result.insert(result.end(), album->Refs.begin(), album->Refs.end());
+		return result;
+	}
+
+	void Library::UpdateTrackArtist(ObjectId track_id, ArtistPtr new_artist)
+	{
+		if (!new_artist) {
+			error("UpdateTrackArtist: null artist");
+			return;
+		}
+
+		debug("UpdateTrackArtist: Updating track ", track_id.Id, " to artist '", new_artist->Name, "'");
+
+		// Update on device via MTP
+		if (_artistSupported) {
+			_session->SetObjectProperty(
+				track_id,
+				ObjectProperty::ArtistId,
+				(u64)new_artist->Id.Id
+			);
+			debug("  ✓ Track ArtistId property updated");
+		} else {
+			// For devices without artist support, update artist name string
+			_session->SetObjectProperty(
+				track_id,
+				ObjectProperty::Artist,
+				new_artist->Name
+			);
+			debug("  ✓ Track Artist property (string) updated");
+		}
 	}
 
 }

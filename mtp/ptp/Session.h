@@ -160,11 +160,18 @@ namespace mtp
 	void Operation9218(u32 param1, u32 param2, u32 param3);  // Phase 1 finalization (0, 0, 5000)
 	ByteArray Operation9227_Init();  // Phase 1: WiFi subsystem init (RECEIVES 4 bytes)
 
+	// HTTP initialization operations
+	void Operation1002(u32 param);  // HTTP subsystem init
+	void Operation1014(u32 param);  // Get device property (GetDevicePropValue)
+	void Operation9801(u32 param);  // Vendor operation
+	void Operation9802(u32 param1, u32 param2);  // Vendor operation
+	void Operation9808(u32 storageId, u32 formatCode, u32 parentObject, u32 reserved1, u32 reserved2);  // Set object property (command only)
+	void Operation9808(u32 storageId, u32 formatCode, u32 parentObject, u32 reserved1, u32 reserved2, const ByteArray& data);  // Set object property with data payload
+
 	// Phase 2 operations (Wireless Setup)
 	ByteArray Operation9224();  // Pre-WiFi preparation (no parameters, returns data)
 	void Operation9226();  // Unknown operation called before GUID operations
 	void Operation9228(u32 param);  // Post-WiFi operation (0, 2, 2, 2)
-	ByteArray Operation9214(u32 param1, u32 param2, u32 param3, u32 param4);  // IP/network config?
 	void Operation9215();  // Unknown operation
 	void Operation9219(u32 param1, u32 param2, u32 param3);  // Parameters: 0, 0, 5000
 	ByteArray Operation922f(const ByteArray &data);  // Receives data from device (data param ignored), returns data
@@ -173,6 +180,7 @@ namespace mtp
 	ByteArray Operation922b(u32 param1, u32 param2, u32 param3);  // Returns data from device
 	void Operation922c(const ByteArray &data, u32 param1, u32 param2);  // Sends HDLC-framed network packets (data loaded from hex file)
 	ByteArray Operation922d(u32 param1, u32 param2);  // Cleanup/polling - sometimes returns DATA
+	void Operation922a(const std::string &album_name);  // Register album context for metadata retrieval
 
 	ByteArray ResetDeviceProperty(DeviceProperty property);  // Reset device property, return response
 
@@ -180,6 +188,9 @@ namespace mtp
 	void SendVendorControlRequest(u8 type, u8 request, u16 value, u16 index, const ByteArray &data, int timeout = DefaultTimeout);
 	ByteArray ReceiveVendorControlData(u8 type, u8 request, u16 value, u16 index, size_t length, int timeout = DefaultTimeout);
 	usb::BulkPipePtr GetBulkPipe() const;
+
+	// Event handling
+	void PollEvent(int timeout = DefaultTimeout);  // Poll for USB interrupt events
 
 		static msg::DeviceInfo GetDeviceInfo(PipePacketer& packeter, u32 transactionId, int timeout = 0);
 

@@ -37,6 +37,7 @@ namespace mtp
 			ObjectId 		Id;
 			ObjectId		MusicFolderId;
 			std::string 	Name;
+		std::vector<u8>	Guid;  // Zune artist GUID (16 bytes)
 		};
 		DECLARE_PTR(Artist);
 
@@ -96,7 +97,9 @@ namespace mtp
 
 		//search by Metadata?
 		ArtistPtr GetArtist(std::string name);
-		ArtistPtr CreateArtist(std::string name);
+		ArtistPtr CreateArtist(std::string name, const std::string& guid = "");
+		void UpdateArtistGuid(ArtistPtr artist, const std::string& guid);
+	void ValidateArtistGuid(const std::string& artist_name, const std::string& track_name, const std::string& guid);
 
 		AlbumPtr GetAlbum(const ArtistPtr & artist, std::string name);
 		AlbumPtr CreateAlbum(const ArtistPtr & artist, std::string name, int year);
@@ -105,6 +108,12 @@ namespace mtp
 		void AddTrack(AlbumPtr album, const NewTrackInfo &ti);
 		void AddCover(AlbumPtr album, const mtp::ByteArray &data);
 		void LoadRefs(AlbumPtr album);
+
+		// Artist retrofit helper methods
+		std::vector<AlbumPtr> GetAlbumsByArtist(const ArtistPtr & artist);
+		void UpdateAlbumArtist(AlbumPtr album, ArtistPtr new_artist);
+		std::vector<ObjectId> GetTracksForAlbum(const AlbumPtr & album);
+		void UpdateTrackArtist(ObjectId track_id, ArtistPtr new_artist);
 	};
 	DECLARE_PTR(Library);
 }

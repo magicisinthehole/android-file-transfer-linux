@@ -146,7 +146,9 @@ namespace mtp
 				InputStream stream(_header->GetData());
 				Response header;
 				header.Read(stream);
-				if (_transaction && _transaction != header.Transaction)
+				// Zune devices don't echo transaction IDs for vendor commands - they send 0 instead
+				// Accept transaction ID 0 as a wildcard match to work around this firmware quirk
+				if (_transaction && _transaction != header.Transaction && header.Transaction != 0)
 				{
 					error("drop message ", hex(header.ContainerType, 4), ", response: ", hex(header.ResponseType, 4), ", transaction: ", hex(header.Transaction, 8), ", transaction: ", hex(_transaction, 8));
 					_valid = false;

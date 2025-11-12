@@ -134,14 +134,14 @@ namespace mtp
 			          ((u32)container.Data[10] << 16) | ((u32)container.Data[11] << 24);
 		}
 
-		// Log outgoing command packet
-		std::cout << "[USB TX] Command 0x" << std::hex << std::setw(4) << std::setfill('0')
-		          << opcode << std::dec << " TransID=" << transId << " ";
-		for (size_t i = 0; i < std::min(container.Data.size(), size_t(40)); i++) {
-			printf("%02x", container.Data[i]);
-		}
-		if (container.Data.size() > 40) std::cout << "...";
-		std::cout << " (" << container.Data.size() << " bytes)" << std::endl;
+		// // Log outgoing command packet
+		// std::cout << "[USB TX] Command 0x" << std::hex << std::setw(4) << std::setfill('0')
+		//           << opcode << std::dec << " TransID=" << transId << " ";
+		// for (size_t i = 0; i < std::min(container.Data.size(), size_t(40)); i++) {
+		// 	printf("%02x", container.Data[i]);
+		// }
+		// if (container.Data.size() > 40) std::cout << "...";
+		// std::cout << " (" << container.Data.size() << " bytes)" << std::endl;
 
 		packeter.Write(container.Data, timeout);
 	}
@@ -176,25 +176,25 @@ namespace mtp
 		packeter.Read(transaction, data, responseCode, response, timeout);
 
 		// Log received response packet
-		std::cout << "[USB RX] Response 0x" << std::hex << std::setw(4) << std::setfill('0')
-		          << (int)responseCode << std::dec << " TransID=" << transaction;
-		if (response.size() > 0) {
-			std::cout << " Response: ";
-			for (size_t i = 0; i < std::min(response.size(), size_t(40)); i++) {
-				printf("%02x", response[i]);
-			}
-			if (response.size() > 40) std::cout << "...";
-			std::cout << " (" << response.size() << " bytes)";
-		}
-		if (data.size() > 0) {
-			std::cout << " Data: ";
-			for (size_t i = 0; i < std::min(data.size(), size_t(40)); i++) {
-				printf("%02x", data[i]);
-			}
-			if (data.size() > 40) std::cout << "...";
-			std::cout << " (" << data.size() << " bytes)";
-		}
-		std::cout << std::endl;
+		// std::cout << "[USB RX] Response 0x" << std::hex << std::setw(4) << std::setfill('0')
+		//           << (int)responseCode << std::dec << " TransID=" << transaction;
+		// if (response.size() > 0) {
+		// 	std::cout << " Response: ";
+		// 	for (size_t i = 0; i < std::min(response.size(), size_t(40)); i++) {
+		// 		printf("%02x", response[i]);
+		// 	}
+		// 	if (response.size() > 40) std::cout << "...";
+		// 	std::cout << " (" << response.size() << " bytes)";
+		// }
+		// if (data.size() > 0) {
+		// 	std::cout << " Data: ";
+		// 	for (size_t i = 0; i < std::min(data.size(), size_t(40)); i++) {
+		// 		printf("%02x", data[i]);
+		// 	}
+		// 	if (data.size() > 40) std::cout << "...";
+		// 	std::cout << " (" << data.size() << " bytes)";
+		// }
+		// std::cout << std::endl;
 
 		CHECK_RESPONSE(responseCode);
 		return data;
@@ -227,10 +227,10 @@ namespace mtp
 			DataRequest req(code, transaction.Id);
 			Container container(req, inputStream);
 
-			// Log data being sent
-			std::cout << "[USB TX] Data for 0x" << std::hex << std::setw(4) << std::setfill('0')
-			          << (int)code << std::dec << " TransID=" << transaction.Id
-			          << " (" << inputStream->GetSize() << " bytes)" << std::endl;
+			// // Log data being sent
+			// std::cout << "[USB TX] Data for 0x" << std::hex << std::setw(4) << std::setfill('0')
+			//           << (int)code << std::dec << " TransID=" << transaction.Id
+			//           << " (" << inputStream->GetSize() << " bytes)" << std::endl;
 
 			if (_separateBulkWrites)
 			{
@@ -633,6 +633,11 @@ namespace mtp
 		return _packeter.GetPipe();
 	}
 
+	void Session::PollEvent(int timeout)
+	{
+		_packeter.PollEvent(timeout);
+	}
+
 	ByteArray Session::GetObjectPropertyList(ObjectId objectId, ObjectFormat format, ObjectProperty property, u32 groupCode, u32 depth, int timeout)
 	{ return RunTransaction(timeout, OperationCode::GetObjectPropList, objectId.Id, (u32)format, property != ObjectProperty::All? (u32)property: 0xffffffffu, groupCode, depth); }
 
@@ -692,13 +697,37 @@ namespace mtp
 	// ========================================================================
 
 	void Session::Operation9212()
-	{ RunTransaction(_defaultTimeout, (OperationCode)0x9212); }
+	{ (void)RunTransaction(_defaultTimeout, (OperationCode)0x9212); }
 
 	void Session::Operation9213()
-	{ RunTransaction(_defaultTimeout, (OperationCode)0x9213); }
+	{ (void)RunTransaction(_defaultTimeout, (OperationCode)0x9213); }
 
 	void Session::Operation9216()
 	{ RunTransaction(_defaultTimeout, (OperationCode)0x9216); }
+
+	// HTTP initialization operations
+	void Session::Operation1002(u32 param)
+	{ RunTransaction(_defaultTimeout, (OperationCode)0x1002, param); }
+
+	void Session::Operation1014(u32 param)
+	{ (void)RunTransaction(_defaultTimeout, (OperationCode)0x1014, param); }
+
+	void Session::Operation9801(u32 param)
+	{ (void)RunTransaction(_defaultTimeout, (OperationCode)0x9801, param); }
+
+	void Session::Operation9802(u32 param1, u32 param2)
+	{ (void)RunTransaction(_defaultTimeout, (OperationCode)0x9802, param1, param2); }
+	void Session::Operation9808(u32 storageId, u32 formatCode, u32 parentObject, u32 reserved1, u32 reserved2)
+	{ (void)RunTransaction(_defaultTimeout, (OperationCode)0x9808, storageId, formatCode, parentObject, reserved1, reserved2); }
+
+	void Session::Operation9808(u32 storageId, u32 formatCode, u32 parentObject, u32 reserved1, u32 reserved2, const ByteArray& data)
+	{
+		// Send Operation 0x9808 with data payload (e.g., folder name in UTF-16LE)
+		IObjectInputStreamPtr inputStream = std::make_shared<ByteArrayObjectInputStream>(data);
+		ByteArray response;
+		RunTransactionWithDataRequest(_defaultTimeout, (OperationCode)0x9808, response, inputStream,
+			storageId, formatCode, parentObject, reserved1, reserved2);
+	}
 
 	void Session::Operation9217(u32 param)
 	{ RunTransaction(_defaultTimeout, (OperationCode)0x9217, param); }
@@ -731,13 +760,6 @@ namespace mtp
 
 	void Session::Operation9228(u32 param)
 	{ RunTransaction(_defaultTimeout, (OperationCode)0x9228, param); }
-
-	ByteArray Session::Operation9214(u32 param1, u32 param2, u32 param3, u32 param4)
-	{
-		// Operation 0x9214 with 4 parameters (appears to be IP/network configuration)
-		// From capture frame 445: params = (0x477dfb34, 0x2d86a0e3, 0xb6101828, 0x8427cc06)
-		return RunTransaction(_defaultTimeout, (OperationCode)0x9214, param1, param2, param3, param4);
-	}
 
 	void Session::Operation9219(u32 param1, u32 param2, u32 param3)
 	{
@@ -797,6 +819,57 @@ namespace mtp
 		// Phase 2 Section 1: Op_0x922d sometimes returns DATA
 		// Usually returns just OK response, but after Op_0x922f or Op_0x922c it returns DATA + OK
 		return RunTransaction(_defaultTimeout, (OperationCode)0x922d, param1, param2);
+	}
+
+	void Session::Operation922a(const std::string &album_name)
+	{
+		// Operation 0x922A: Register album context for metadata retrieval
+		// Called after artist object deletion, before metadata requests
+		// Sends 530 bytes of data to device with album name
+		// Data structure from capture frame 5956:
+		//   Bytes 0-7:   uint64 = 0
+		//   Bytes 8-11:  uint32 = 100
+		//   Bytes 12-15: uint32 = 0
+		//   Bytes 16-19: uint32 = 1
+		//   Bytes 20+:   UTF-16LE album name (null-terminated)
+		//   Padding:     zeros to 530 bytes total
+
+		ByteArray data(530, 0);  // 530 bytes, initialized to zeros
+
+		// Write uint64 = 0 (bytes 0-7 already zero)
+
+		// Write uint32 = 100 at bytes 8-11 (little-endian)
+		data[8] = 0x64;  // 100 decimal
+		data[9] = 0x00;
+		data[10] = 0x00;
+		data[11] = 0x00;
+
+		// Bytes 12-15 already zero (uint32 = 0)
+
+		// Write uint32 = 1 at bytes 16-19 (little-endian)
+		data[16] = 0x01;
+		data[17] = 0x00;
+		data[18] = 0x00;
+		data[19] = 0x00;
+
+		// Write UTF-16LE album name starting at byte 20
+		size_t offset = 20;
+		for (char c : album_name) {
+			if (offset + 1 < 530) {
+				data[offset++] = static_cast<u8>(c);  // Low byte (ASCII char)
+				data[offset++] = 0x00;  // High byte (for basic ASCII)
+			}
+		}
+		// Add null terminator (UTF-16LE null = 0x0000)
+		if (offset + 1 < 530) {
+			data[offset++] = 0x00;
+			data[offset++] = 0x00;
+		}
+		// Remaining bytes already zero (padding)
+
+		ByteArray response;
+		auto stream = std::make_shared<ByteArrayObjectInputStream>(data);
+		RunTransactionWithDataRequest(_defaultTimeout, (OperationCode)0x922a, response, stream);
 	}
 
 	void Session::Operation9215()

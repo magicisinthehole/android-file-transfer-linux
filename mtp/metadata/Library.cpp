@@ -129,6 +129,17 @@ namespace mtp
 				else
 					artist->MusicFolderId = _session->CreateDirectory(name, _musicFolder, _storage).ObjectId;
 
+				// Load GUID property (0xDA97) if it exists - needed for retrofit check
+				try {
+					artist->Guid = _session->GetObjectProperty(id, static_cast<ObjectProperty>(0xDA97));
+					if (!artist->Guid.empty()) {
+						debug("  artist has GUID: ", artist->Guid.size(), " bytes");
+					}
+				} catch (...) {
+					// GUID not present on this artist - leave empty
+					debug("  artist has no GUID");
+				}
+
 				_artists.insert(std::make_pair(name, artist));
 				if (reporter)
 					reporter(State::LoadingArtists, ++progress, total);

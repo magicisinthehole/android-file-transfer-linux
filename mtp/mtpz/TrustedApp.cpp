@@ -18,10 +18,13 @@
 */
 
 #include <mtp/mtpz/TrustedApp.h>
+#include <mtp/mtpz/MTPZConstants.h>
 #include <mtp/ptp/Session.h>
 #include <mtp/log.h>
 #include <mutex>
 #include <tuple>
+#include <vector>
+#include <memory>
 
 #ifdef MTPZ_ENABLED
 #	include <openssl/aes.h>
@@ -69,7 +72,7 @@ namespace mtp
 		ByteArray certificate;
 		ByteArray _deviceRSAModulus;  // Device's unique RSA public key
 
-		Keys(): exp(), mod(), pkey(), rsa(RSA_new())
+		Keys(): exp(nullptr), mod(nullptr), pkey(nullptr), rsa(RSA_new())
 		{ }
 
 		void Update()
@@ -123,17 +126,17 @@ namespace mtp
 
 		std::tuple<ByteArray, ByteArray> GenerateCertificateMessage()
 		{
-			static const size_t messageSize = 156 + certificate.size();
+			using namespace mtpz;
+			static const size_t messageSize = MESSAGE_HEADER_SIZE + certificate.size();
 			ByteArray challenge(16);
 			RAND_bytes(challenge.data(), challenge.size());
 
 			ByteArray message(messageSize);
 			auto dst = message.data();
-			*dst++ = 0x02;
-			*dst++ = 0x01;
-			*dst++ = 0x01;
-			*dst++ = 0x00;
-			*dst++ = 0x00;
+			
+			// Use constants for header
+			for(auto b : TAG_CERTIFICATE_MSG) *dst++ = b;
+
 			*dst++ = certificate.size() >> 8;
 			*dst++ = certificate.size();
 			dst = std::copy(certificate.begin(), certificate.end(), dst);
@@ -149,14 +152,14 @@ namespace mtp
 				SHA1(salt.data(), salt.size(), hash.data());
 			}
 
-			ByteArray key = HKDF(hash.data(), hash.size(), 107);
+			ByteArray key = HKDF(hash.data(), hash.size(), KEY_DERIVATION_CONST);
 			//HexDump("key", key);
 
 			ByteArray signature(RSA_size(rsa));
-			signature[106] = 1;
+			signature[KEY_DERIVATION_CONST - 1] = 1;
 			for(size_t i = 0; i < hash.size(); ++i)
-				signature[i + 107] = hash[i];
-			for(size_t i = 0; i < 107; ++i)
+				signature[i + KEY_DERIVATION_CONST] = hash[i];
+			for(size_t i = 0; i < KEY_DERIVATION_CONST; ++i)
 				signature[i] ^= key[i];
 
 			signature[0] &= 127;
@@ -254,6 +257,7 @@ namespace mtp
 
 		ByteArray VerifyResponse(const ByteArray & message, const ByteArray & originalChallenge)
 		{
+			using namespace mtpz;
 
 #define CHECK_MORE(ARRAY, SIZE) if (src - (ARRAY).data() + static_cast<size_t>(SIZE) > (ARRAY).size()) \
 	throw std::runtime_error("input buffer overrun");
@@ -279,11 +283,11 @@ namespace mtp
 			src += signatureSize;
 
 			{
-				ByteArray hash = HKDF(signature.data() + 21, 107, 20);
-				for(size_t i = 0; i < 20; ++i)
+				ByteArray hash = HKDF(signature.data() + 21, KEY_DERIVATION_CONST, HASH_SIZE);
+				for(size_t i = 0; i < HASH_SIZE; ++i)
 					signature[1 + i] ^= hash[i];
-				ByteArray key = HKDF(signature.data() + 1, 20, 107);
-				for(size_t i = 0; i < 107; ++i)
+				ByteArray key = HKDF(signature.data() + 1, HASH_SIZE, KEY_DERIVATION_CONST);
+				for(size_t i = 0; i < KEY_DERIVATION_CONST; ++i)
 					signature[21 + i] ^= key[i];
 			}
 			//HexDump("signature out", signature);
@@ -305,21 +309,21 @@ namespace mtp
 
 			// Extract device RSA key from decrypted payload
 			// Look for marker pattern: 0x01 0x00 0x80 followed by 128-byte modulus
-			const u8 marker[] = {0x01, 0x00, 0x80};
-			for (size_t i = 0; i < payload.size() - 131; i++) {
+			const u8 marker[] = {MARKER_EXPONENT_LO, MARKER_EXPONENT_HI, MARKER_SIZE};
+			for (size_t i = 0; i < payload.size() - (RSA_MODULUS_SIZE + 3); i++) {
 				if (payload[i] == marker[0] &&
 					payload[i+1] == marker[1] &&
 					payload[i+2] == marker[2]) {
 
 					// Extract 128 bytes after marker
 					ByteArray modulus;
-					modulus.reserve(128);
-					for (size_t j = 0; j < 128; j++) {
+					modulus.reserve(RSA_MODULUS_SIZE);
+					for (size_t j = 0; j < RSA_MODULUS_SIZE; j++) {
 						modulus.push_back(payload[i + 3 + j]);
 					}
 
 					// Validate: 128 bytes and first byte (LE LSB) is odd
-					if (modulus.size() == 128 && (modulus[0] & 1)) {
+					if (modulus.size() == RSA_MODULUS_SIZE && (modulus[0] & 1)) {
 						_deviceRSAModulus = modulus;
 						debug("found device RSA key in decrypted payload at offset ", i);
 						break;
@@ -465,14 +469,15 @@ namespace mtp
 
 	ByteArray TrustedApp::ExtractDeviceRSAKey(const ByteArray& response)
 	{
+		using namespace mtpz;
 		// Look for the marker pattern: 0x01 0x00 0x80
 		// 0x01 0x00 = exponent 65537 in little-endian
 		// 0x80 = size marker (128 bytes)
-		const u8 marker[] = {0x01, 0x00, 0x80};
+		const u8 marker[] = {MARKER_EXPONENT_LO, MARKER_EXPONENT_HI, MARKER_SIZE};
 
 		debug("searching for device RSA key in ", response.size(), " byte response");
 
-		for (size_t i = 0; i < response.size() - 131; i++) {
+		for (size_t i = 0; i < response.size() - (RSA_MODULUS_SIZE + 3); i++) {
 			if (response[i] == marker[0] &&
 			    response[i+1] == marker[1] &&
 			    response[i+2] == marker[2]) {
@@ -480,15 +485,15 @@ namespace mtp
 
 				// Extract 128 bytes after the marker
 				ByteArray modulus;
-				modulus.reserve(128);
-				for (size_t j = 0; j < 128; j++) {
+				modulus.reserve(RSA_MODULUS_SIZE);
+				for (size_t j = 0; j < RSA_MODULUS_SIZE; j++) {
 					modulus.push_back(response[i + 3 + j]);
 				}
 
 				// Validate: modulus should be 1024 bits (128 bytes)
 				// Little-endian format: FIRST byte is LSB and should be odd
 				debug("modulus size: ", modulus.size(), ", first byte (LE LSB): 0x", std::hex, (int)modulus[0]);
-				if (modulus.size() == 128 && (modulus[0] & 1)) {
+				if (modulus.size() == RSA_MODULUS_SIZE && (modulus[0] & 1)) {
 					debug("validation passed, returning device modulus");
 					return modulus;
 				} else {
@@ -503,12 +508,11 @@ namespace mtp
 
 	ByteArray TrustedApp::EncryptWiFiPassword(const std::string &password)
 	{
+		using namespace mtpz;
 		// Use device-specific RSA key extracted during MTPZ authentication
 		if (_deviceRSAModulus.empty()) {
 			throw std::runtime_error("Device RSA key not available. Run MTPZ authentication first.");
 		}
-
-		const unsigned long EXPONENT = 65537; // 0x10001
 
 		// Create RSA key structure
 		RSA* rsa = RSA_new();
@@ -522,7 +526,7 @@ namespace mtp
 		// The modulus is stored in little-endian format, so we need to reverse it
 		ByteArray reversed_modulus(_deviceRSAModulus.rbegin(), _deviceRSAModulus.rend());
 
-		if (!BN_bin2bn(reversed_modulus.data(), reversed_modulus.size(), n) || !BN_set_word(e, EXPONENT))
+		if (!BN_bin2bn(reversed_modulus.data(), reversed_modulus.size(), n) || !BN_set_word(e, RSA_EXPONENT))
 		{
 			BN_free(n);
 			BN_free(e);
@@ -562,7 +566,7 @@ namespace mtp
 			throw std::runtime_error("RSA encryption failed");
 
 		// Verify encrypted size is 128 bytes (RSA-1024)
-		if (encrypted.size() != 128) {
+		if (encrypted.size() != RSA_MODULUS_SIZE) {
 			throw std::runtime_error("Unexpected encrypted size: expected 128 bytes");
 		}
 

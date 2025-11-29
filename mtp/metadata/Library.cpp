@@ -72,6 +72,8 @@ namespace mtp
 					_albumsFolder = id;
 				else if (name == "Music")
 					_musicFolder = id;
+				else if (name == "OverDrive")
+					_audiobooksFolder = id;
 			});
 		}
 		if (_artistSupported && _artistsFolder == ObjectId())
@@ -538,12 +540,12 @@ namespace mtp
 		const AlbumPtr & album,
 		ObjectFormat type,
 		std::string name, const std::string & genre, int trackIndex,
-		const std::string &filename, size_t size)
+		const std::string &filename, size_t size, uint32_t duration_ms)
 	{
 		ByteArray propList;
 		OutputStream os(propList);
 
-		os.Write32(3 + (!genre.empty()? 1: 0) + (trackIndex? 1: 0)); //number of props
+		os.Write32(3 + (!genre.empty()? 1: 0) + (trackIndex? 1: 0) + (duration_ms? 1: 0)); //number of props
 
 		if (_artistSupported)
 		{
@@ -586,6 +588,14 @@ namespace mtp
 		os.Write16(static_cast<u16>(ObjectProperty::ObjectFilename));
 		os.Write16(static_cast<u16>(DataTypeCode::String));
 		os.WriteString(filename);
+
+		if (duration_ms)
+		{
+			os.Write32(0); //object handle
+			os.Write16(static_cast<u16>(ObjectProperty::Duration));
+			os.Write16(static_cast<u16>(DataTypeCode::Uint32));
+			os.Write32(duration_ms);
+		}
 
 		auto response = _session->SendObjectPropList(_storage, album->MusicFolderId, type, size, propList);
 		NewTrackInfo ti;
@@ -732,6 +742,179 @@ namespace mtp
 			);
 			debug("  ✓ Track Artist property (string) updated");
 		}
+	}
+
+	// Audiobook methods
+
+	Library::AudiobookPtr Library::GetAudiobook(std::string name)
+	{
+		if (name.empty())
+			return AudiobookPtr();
+
+		auto it = _audiobooks.find(name);
+		return it != _audiobooks.end() ? it->second : AudiobookPtr();
+	}
+
+	Library::AudiobookPtr Library::CreateAudiobook(std::string name, const std::string& author, int year)
+	{
+		if (name.empty())
+			throw std::runtime_error("audiobook name is required");
+
+		// Create OverDrive folder if it doesn't exist
+		if (_audiobooksFolder == ObjectId())
+			_audiobooksFolder = _session->CreateDirectory("OverDrive", Session::Root, _storage).ObjectId;
+
+		auto audiobook = std::make_shared<Audiobook>();
+		audiobook->Name = name;
+		audiobook->Author = author;
+		audiobook->Year = year;
+
+		// Create audiobook folder within OverDrive
+		// Note: Audiobooks don't use AbstractAudioAlbum objects like music albums.
+		// The device creates ZMDB schema 0x11 (AudiobookTitle) entries internally
+		// when tracks with AudiobookName property are uploaded.
+		audiobook->AudiobookFolderId = GetOrCreate(_audiobooksFolder, name);
+		audiobook->Id = audiobook->AudiobookFolderId;
+
+		_audiobooks.insert(std::make_pair(name, audiobook));
+		return audiobook;
+	}
+
+	Library::NewTrackInfo Library::CreateAudiobookTrack(
+		const AudiobookPtr & audiobook,
+		ObjectFormat type,
+		std::string name,
+		int trackIndex,
+		const std::string &filename,
+		size_t size,
+		u32 duration_ms)
+	{
+		if (!audiobook)
+			throw std::runtime_error("audiobook is required");
+
+		bool sendYear = audiobook->Year != 0;
+		bool sendDuration = duration_ms > 0;
+
+		ByteArray propList;
+		OutputStream os(propList);
+
+		os.Write32(7 + (trackIndex ? 1 : 0) + (sendYear ? 1 : 0) + (sendDuration ? 1 : 0)); // number of props
+
+		// Property 1: Artist (author) - DC46
+		os.Write32(0); // object handle
+		os.Write16(static_cast<u16>(ObjectProperty::Artist));
+		os.Write16(static_cast<u16>(DataTypeCode::String));
+		os.WriteString(audiobook->Author);
+
+		// Property 2: AlbumArtist (author) - DC9B
+		os.Write32(0); // object handle
+		os.Write16(static_cast<u16>(ObjectProperty::AlbumArtist));
+		os.Write16(static_cast<u16>(DataTypeCode::String));
+		os.WriteString(audiobook->Author);
+
+		// Property 3: Name (track title) - DC44
+		os.Write32(0); // object handle
+		os.Write16(static_cast<u16>(ObjectProperty::Name));
+		os.Write16(static_cast<u16>(DataTypeCode::String));
+		os.WriteString(name);
+
+		// Property 4: Album (audiobook name) - DC9A
+		os.Write32(0); // object handle
+		os.Write16(static_cast<u16>(ObjectProperty::AlbumName));
+		os.Write16(static_cast<u16>(DataTypeCode::String));
+		os.WriteString(audiobook->Name);
+
+		// Property 5: Track number - DC8B
+		if (trackIndex)
+		{
+			os.Write32(0); // object handle
+			os.Write16(static_cast<u16>(ObjectProperty::Track));
+			os.Write16(static_cast<u16>(DataTypeCode::Uint16));
+			os.Write16(trackIndex);
+		}
+
+		// Property 6: ObjectFilename - DC07
+		os.Write32(0); // object handle
+		os.Write16(static_cast<u16>(ObjectProperty::ObjectFilename));
+		os.Write16(static_cast<u16>(DataTypeCode::String));
+		os.WriteString(filename);
+
+		// Property 7: MetaGenre = 18 (audiobook) - DC95
+		os.Write32(0); // object handle
+		os.Write16(static_cast<u16>(ObjectProperty::MetaGenre));
+		os.Write16(static_cast<u16>(DataTypeCode::Uint16));
+		os.Write16(18); // Audiobook MetaGenre
+
+		// Property 8: AudiobookName (DA9A) - groups tracks together
+		os.Write32(0); // object handle
+		os.Write16(static_cast<u16>(ObjectProperty::AudiobookName));
+		os.Write16(static_cast<u16>(DataTypeCode::String));
+		os.WriteString(audiobook->Name);
+
+		// Property 9: DateAuthored (DC47) - release year
+		if (sendYear)
+		{
+			os.Write32(0); // object handle
+			os.Write16(static_cast<u16>(ObjectProperty::DateAuthored));
+			os.Write16(static_cast<u16>(DataTypeCode::String));
+			os.WriteString(ConvertYear(audiobook->Year));
+		}
+
+		// Property 10: Duration (DC89) - track duration in milliseconds
+		if (sendDuration)
+		{
+			os.Write32(0); // object handle
+			os.Write16(static_cast<u16>(ObjectProperty::Duration));
+			os.Write16(static_cast<u16>(DataTypeCode::Uint32));
+			os.Write32(duration_ms);
+		}
+
+		auto response = _session->SendObjectPropList(_storage, audiobook->AudiobookFolderId, type, size, propList);
+
+		NewTrackInfo ti;
+		ti.Id = response.ObjectId;
+		ti.Name = name;
+		ti.Index = trackIndex;
+		return ti;
+	}
+
+	void Library::LoadAudiobookRefs(AudiobookPtr audiobook)
+	{
+		if (!audiobook || audiobook->RefsLoaded)
+			return;
+
+		auto refs = _session->GetObjectReferences(audiobook->Id).ObjectHandles;
+		std::copy(refs.begin(), refs.end(), std::inserter(audiobook->Refs, audiobook->Refs.begin()));
+		for (auto trackId : refs)
+		{
+			auto name = _session->GetObjectStringProperty(trackId, ObjectProperty::Name);
+			auto index = _session->GetObjectIntegerProperty(trackId, ObjectProperty::Track);
+			debug("[", index, "]: ", name);
+			audiobook->Tracks.insert(std::make_pair(name, index));
+		}
+		audiobook->RefsLoaded = true;
+	}
+
+	void Library::AddAudiobookTrack(AudiobookPtr audiobook, const NewTrackInfo & ti)
+	{
+		if (!audiobook)
+			return;
+
+		// Note: Unlike music albums which use SetObjectReferences to link tracks,
+		// audiobooks don't use object references. Tracks are grouped by their
+		// AudiobookName (DA9A) property, which is already set during CreateAudiobookTrack.
+		// Just update our local tracking.
+		audiobook->Refs.insert(ti.Id);
+		audiobook->Tracks.insert(std::make_pair(ti.Name, ti.Index));
+	}
+
+	void Library::AddAudiobookTrackCover(ObjectId trackId, const mtp::ByteArray &data)
+	{
+		if (trackId == ObjectId() || !_albumCoverSupported)
+			return;
+
+		mtp::debug("sending ", data.size(), " bytes of audiobook track cover to track ", trackId.Id, "...");
+		_session->SetObjectPropertyAsArray(trackId, mtp::ObjectProperty::RepresentativeSampleData, data);
 	}
 
 }

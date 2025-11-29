@@ -57,6 +57,20 @@ namespace mtp
 		};
 		DECLARE_PTR(Album);
 
+		struct Audiobook
+		{
+			ObjectId 		Id;
+			ObjectId		AudiobookFolderId;
+			std::string 	Name;       // Audiobook title
+			std::string 	Author;     // Author name
+			time_t	 		Year = 0;   // Release year
+			bool			RefsLoaded = false;
+
+			std::unordered_set<ObjectId> Refs;
+			std::unordered_multimap<std::string, int> Tracks;
+		};
+		DECLARE_PTR(Audiobook);
+
 		struct NewTrackInfo
 		{
 			ObjectId		Id;
@@ -68,6 +82,7 @@ namespace mtp
 		ObjectId _artistsFolder;
 		ObjectId _albumsFolder;
 		ObjectId _musicFolder;
+		ObjectId _audiobooksFolder;
 		bool _artistSupported;
 		bool _albumDateAuthoredSupported;
 		bool _albumCoverSupported;
@@ -83,6 +98,9 @@ namespace mtp
 
 		using AlbumMap = std::unordered_map<AlbumKey, AlbumPtr, AlbumKeyHash>;
 		AlbumMap _albums;
+
+		using AudiobookMap = std::unordered_map<std::string, AudiobookPtr>;
+		AudiobookMap _audiobooks;
 	private:
 		using NameToObjectIdMap = std::unordered_map<std::string, ObjectId>;
 		NameToObjectIdMap ListAssociations(ObjectId parentId);
@@ -104,7 +122,7 @@ namespace mtp
 		AlbumPtr GetAlbum(const ArtistPtr & artist, std::string name);
 		AlbumPtr CreateAlbum(const ArtistPtr & artist, std::string name, int year);
 		bool HasTrack(const AlbumPtr & album, const std::string &name, int trackIndex);
-		NewTrackInfo CreateTrack(const ArtistPtr & artist, const AlbumPtr & album, ObjectFormat type, std::string name, const std::string & genre, int trackIndex, const std::string &filename, size_t size);
+		NewTrackInfo CreateTrack(const ArtistPtr & artist, const AlbumPtr & album, ObjectFormat type, std::string name, const std::string & genre, int trackIndex, const std::string &filename, size_t size, uint32_t duration_ms = 0);
 		void AddTrack(AlbumPtr album, const NewTrackInfo &ti);
 		void AddCover(AlbumPtr album, const mtp::ByteArray &data);
 		void LoadRefs(AlbumPtr album);
@@ -114,6 +132,14 @@ namespace mtp
 		void UpdateAlbumArtist(AlbumPtr album, ArtistPtr new_artist);
 		std::vector<ObjectId> GetTracksForAlbum(const AlbumPtr & album);
 		void UpdateTrackArtist(ObjectId track_id, ArtistPtr new_artist);
+
+		// Audiobook methods
+		AudiobookPtr GetAudiobook(std::string name);
+		AudiobookPtr CreateAudiobook(std::string name, const std::string& author, int year);
+		NewTrackInfo CreateAudiobookTrack(const AudiobookPtr & audiobook, ObjectFormat type, std::string name, int trackIndex, const std::string &filename, size_t size, u32 duration_ms = 0);
+		void AddAudiobookTrack(AudiobookPtr audiobook, const NewTrackInfo &ti);
+		void AddAudiobookTrackCover(ObjectId trackId, const mtp::ByteArray &data);
+		void LoadAudiobookRefs(AudiobookPtr audiobook);
 	};
 	DECLARE_PTR(Library);
 }

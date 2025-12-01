@@ -540,12 +540,12 @@ namespace mtp
 		const AlbumPtr & album,
 		ObjectFormat type,
 		std::string name, const std::string & genre, int trackIndex,
-		const std::string &filename, size_t size, uint32_t duration_ms)
+		const std::string &filename, size_t size, uint32_t duration_ms, int rating)
 	{
 		ByteArray propList;
 		OutputStream os(propList);
 
-		os.Write32(3 + (!genre.empty()? 1: 0) + (trackIndex? 1: 0) + (duration_ms? 1: 0)); //number of props
+		os.Write32(3 + (!genre.empty()? 1: 0) + (trackIndex? 1: 0) + (duration_ms? 1: 0) + (rating >= 0? 1: 0)); //number of props
 
 		if (_artistSupported)
 		{
@@ -595,6 +595,14 @@ namespace mtp
 			os.Write16(static_cast<u16>(ObjectProperty::Duration));
 			os.Write16(static_cast<u16>(DataTypeCode::Uint32));
 			os.Write32(duration_ms);
+		}
+
+		if (rating >= 0)
+		{
+			os.Write32(0); //object handle
+			os.Write16(static_cast<u16>(ObjectProperty::UserRating)); // 0xDC8A
+			os.Write16(static_cast<u16>(DataTypeCode::Uint16)); // DC8A uses UINT16, not UINT32
+			os.Write16(static_cast<u16>(rating));
 		}
 
 		auto response = _session->SendObjectPropList(_storage, album->MusicFolderId, type, size, propList);

@@ -872,6 +872,76 @@ namespace mtp
 		RunTransactionWithDataRequest(_defaultTimeout, (OperationCode)0x922a, response, stream);
 	}
 
+	void Session::SetTrackRatingsByAlbum(
+		const std::vector<u32>& album_mtp_ids,
+		const std::vector<std::vector<u32>>& tracks_per_album,
+		u8 rating)
+	{
+		// Correct rating protocol from pcap analysis:
+		// 1. Call SetObjectReferences (0x9805) for each album with its track IDs
+		// 2. Call 0x922f with rating payload
+
+		fprintf(stderr, "SetTrackRatingsByAlbum: Starting with %zu albums, rating=%d\n",
+			album_mtp_ids.size(), (int)rating);
+
+		if (album_mtp_ids.empty() || album_mtp_ids.size() != tracks_per_album.size()) {
+			fprintf(stderr, "SetTrackRatingsByAlbum: Invalid parameters\n");
+			return;
+		}
+
+		// Step 1: SetObjectReferences for each album
+		// This tells the device which tracks will receive the rating
+		for (size_t i = 0; i < album_mtp_ids.size(); i++) {
+			u32 album_id = album_mtp_ids[i];
+			const auto& track_ids = tracks_per_album[i];
+
+			if (track_ids.empty()) continue;
+
+			fprintf(stderr, "SetTrackRatingsByAlbum: Album[%zu] ID=0x%08X with %zu tracks\n",
+				i, album_id, track_ids.size());
+			for (size_t j = 0; j < track_ids.size(); j++) {
+				fprintf(stderr, "  Track[%zu] ID=0x%08X\n", j, track_ids[j]);
+			}
+
+			// Build ObjectHandles for this album's tracks
+			msg::ObjectHandles handles;
+			handles.ObjectHandles.reserve(track_ids.size());
+			for (u32 track_id : track_ids) {
+				handles.ObjectHandles.push_back(ObjectId(track_id));
+			}
+
+			// Call SetObjectReferences (0x9805)
+			fprintf(stderr, "SetTrackRatingsByAlbum: Calling SetObjectReferences(0x%08X)...\n", album_id);
+			SetObjectReferences(ObjectId(album_id), handles);
+			fprintf(stderr, "SetTrackRatingsByAlbum: SetObjectReferences completed\n");
+		}
+
+		// Step 2: Call 0x922f with rating payload
+		// Format from pcap: [u32:1][u32:100][u32:4][u32:rating][zeros...] = 1024 bytes
+		// (pcap showed 1036 bytes total in data phase = 12-byte MTP header + 1024-byte payload)
+		ByteArray payload(1024, 0);
+
+		// Offset 0-3: u32(1) - count/type marker
+		payload[0] = 0x01; payload[1] = 0x00; payload[2] = 0x00; payload[3] = 0x00;
+
+		// Offset 4-7: u32(100) - constant
+		payload[4] = 0x64; payload[5] = 0x00; payload[6] = 0x00; payload[7] = 0x00;
+
+		// Offset 8-11: u32(4) - operation type (rating)
+		payload[8] = 0x04; payload[9] = 0x00; payload[10] = 0x00; payload[11] = 0x00;
+
+		// Offset 12-15: u32(rating) - the actual rating value (3=disliked, 8=liked)
+		payload[12] = rating; payload[13] = 0x00; payload[14] = 0x00; payload[15] = 0x00;
+
+		// Rest is zeros (padding to 1024 bytes)
+
+		fprintf(stderr, "SetTrackRatingsByAlbum: Calling 0x922f with rating=%d, payload=%zu bytes...\n", (int)rating, payload.size());
+		auto stream = std::make_shared<ByteArrayObjectInputStream>(payload);
+		ByteArray response;
+		RunTransactionWithDataRequest(_defaultTimeout, (OperationCode)0x922f, response, stream);
+		fprintf(stderr, "SetTrackRatingsByAlbum: 0x922f completed, response size=%zu\n", response.size());
+	}
+
 	void Session::Operation9215()
 	{ RunTransaction(_defaultTimeout, (OperationCode)0x9215); }
 

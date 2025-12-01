@@ -122,7 +122,7 @@ namespace mtp
 		AlbumPtr GetAlbum(const ArtistPtr & artist, std::string name);
 		AlbumPtr CreateAlbum(const ArtistPtr & artist, std::string name, int year);
 		bool HasTrack(const AlbumPtr & album, const std::string &name, int trackIndex);
-		NewTrackInfo CreateTrack(const ArtistPtr & artist, const AlbumPtr & album, ObjectFormat type, std::string name, const std::string & genre, int trackIndex, const std::string &filename, size_t size, uint32_t duration_ms = 0);
+		NewTrackInfo CreateTrack(const ArtistPtr & artist, const AlbumPtr & album, ObjectFormat type, std::string name, const std::string & genre, int trackIndex, const std::string &filename, size_t size, uint32_t duration_ms = 0, int rating = -1);
 		void AddTrack(AlbumPtr album, const NewTrackInfo &ti);
 		void AddCover(AlbumPtr album, const mtp::ByteArray &data);
 		void LoadRefs(AlbumPtr album);

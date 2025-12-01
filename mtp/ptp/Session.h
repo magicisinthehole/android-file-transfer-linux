@@ -28,6 +28,7 @@
 #include <mtp/ptp/ObjectProperty.h>
 #include <mtp/ptp/PipePacketer.h>
 #include <time.h>
+#include <vector>
 
 namespace mtp
 {
@@ -181,6 +182,15 @@ namespace mtp
 	void Operation922c(const ByteArray &data, u32 param1, u32 param2);  // Sends HDLC-framed network packets (data loaded from hex file)
 	ByteArray Operation922d(u32 param1, u32 param2);  // Cleanup/polling - sometimes returns DATA
 	void Operation922a(const std::string &album_name);  // Register album context for metadata retrieval
+
+	// Rating updates: SetObjectReferences per album + 0x922f
+	// album_mtp_ids: Album MTP object IDs (schema byte 0x06)
+	// tracks_per_album: Corresponding track IDs for each album (schema byte 0x01)
+	// rating: 0=unrated, 3=disliked, 8=liked
+	void SetTrackRatingsByAlbum(
+		const std::vector<u32>& album_mtp_ids,
+		const std::vector<std::vector<u32>>& tracks_per_album,
+		u8 rating);
 
 	ByteArray ResetDeviceProperty(DeviceProperty property);  // Reset device property, return response
 

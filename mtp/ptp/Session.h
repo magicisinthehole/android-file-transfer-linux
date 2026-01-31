@@ -89,6 +89,7 @@ namespace mtp
 		msg::ObjectHandles GetObjectHandles(StorageId storageId = AllStorages, ObjectFormat objectFormat = ObjectFormat::Any, ObjectId parent = Device, int timeout = LongTimeout);
 		msg::StorageIDs GetStorageIDs();
 		msg::StorageInfo GetStorageInfo(StorageId storageId);
+		void FormatStore(StorageId storageId, u32 formatType = 0);
 
 		msg::NewObjectInfo CreateDirectory(const std::string &name, ObjectId parentId, StorageId storageId = AnyStorage, AssociationType type = AssociationType::GenericFolder);
 		msg::ObjectInfo GetObjectInfo(ObjectId objectId);

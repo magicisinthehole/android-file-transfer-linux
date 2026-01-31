@@ -260,6 +260,9 @@ namespace mtp
 	msg::StorageInfo Session::GetStorageInfo(StorageId storageId)
 	{ return ParseResponse<msg::StorageInfo>(RunTransaction(_defaultTimeout, OperationCode::GetStorageInfo, storageId.Id)); }
 
+	void Session::FormatStore(StorageId storageId, u32 formatType)
+	{ RunTransaction(_defaultTimeout, OperationCode::FormatStore, storageId.Id, formatType); }
+
 	msg::SendObjectPropListResponse Session::SendObjectPropList(StorageId storageId, ObjectId parentId, ObjectFormat format, u64 objectSize, const ByteArray & propList)
 	{
 		ByteArray responseData;

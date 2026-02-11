@@ -30,6 +30,7 @@
 #include <sys/time.h>
 #include <poll.h>
 #include <signal.h>
+#include <cstring>
 
 #include "linux/usbdevice_fs.h"
 
@@ -166,13 +167,19 @@ namespace mtp { namespace usb
 			IOCTL(Fd, USBDEVFS_SUBMITURB, GetKernelUrb());
 		}
 
-		void Discard()
+		// Returns true if the URB was successfully cancelled (still pending).
+		// Returns false if it already completed (EINVAL) — caller must drain it.
+		bool Discard()
 		{
 			int r = ioctl(Fd, USBDEVFS_DISCARDURB, GetKernelUrb());
 			if (r != 0)
 			{
-				perror("ioctl(USBDEVFS_DISCARDURB)");
+				if (errno == EINVAL)
+					return false; // Already completed — must be reaped
+				error("ioctl(USBDEVFS_DISCARDURB): ", strerror(errno));
+				return false;
 			}
+			return true;
 		}
 
 		size_t Send(const IObjectInputStreamPtr &inputStream, size_t size)
@@ -242,7 +249,7 @@ namespace mtp { namespace usb
 		if (r == 0 && timeout > 0)
 		{
 			int ms = (now.tv_sec - started.tv_sec) * 1000 + (now.tv_usec - started.tv_usec) / 1000;
-			error(ms, " ms since the last poll call");
+			debug(ms, " ms poll timeout waiting for urb completion");
 		}
 		urb = AsyncReap();
 		if (urb)
@@ -271,8 +278,26 @@ namespace mtp { namespace usb
 		{ error("clearing halt status for ep ", hex(ep->GetAddress(), 2), ": ", ex.what()); }
 	}
 
+	void Device::DrainStaleUrbs()
+	{
+		int drained = 0;
+		while (true)
+		{
+			void *urb = AsyncReap();
+			if (!urb)
+				break;
+			++drained;
+		}
+		if (drained)
+			debug("drained ", drained, " stale urb(s) from completion queue");
+	}
+
 	void Device::Submit(Urb *urb, int timeout)
 	{
+		// Drain any completed URBs left from previous operations or
+		// concurrent endpoints (e.g. interrupt/event) before submitting.
+		DrainStaleUrbs();
+
 		urb->Submit();
 		try
 		{
@@ -281,7 +306,8 @@ namespace mtp { namespace usb
 				usbdevfs_urb * completedKernelUrb = static_cast<usbdevfs_urb *>(Reap(timeout));
 				if (urb->GetKernelUrb() != completedKernelUrb)
 				{
-					error("got unknown urb: ", completedKernelUrb, " of size ", completedKernelUrb->buffer_length);
+					debug("skipping urb from another endpoint: ", completedKernelUrb,
+						  " (size ", completedKernelUrb->buffer_length, ")");
 					continue;
 				}
 				else
@@ -290,13 +316,18 @@ namespace mtp { namespace usb
 		}
 		catch(const TimeoutException &ex)
 		{
-			urb->Discard();
+			if (!urb->Discard())
+			{
+				// URB already completed — drain it so it doesn't poison the next operation
+				DrainStaleUrbs();
+			}
 			throw;
 		}
 		catch(const std::exception &ex)
 		{
 			error("error while submitting urb: ", ex.what());
-			urb->Discard();
+			if (!urb->Discard())
+				DrainStaleUrbs();
 			throw;
 		}
 	}

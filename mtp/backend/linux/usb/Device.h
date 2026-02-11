@@ -80,6 +80,7 @@ namespace mtp { namespace usb
 
 	private:
 		static u8 TransactionType(const EndpointPtr &ep);
+		void DrainStaleUrbs();
 		void * Reap(int timeout);
 		void * AsyncReap();
 		void Submit(Urb *urb, int timeout);

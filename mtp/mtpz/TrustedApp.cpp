@@ -47,14 +47,26 @@ namespace mtp
 
 	TrustedApp::~TrustedApp()
 	{
-		try
-		{ _session->GenericOperation(OperationCode::DisableTrustedFilesOperations); }
-		catch(const std::exception& ex)
-		{ error("DisableTrustedFilesOperations failed: ", ex.what()); }
+		if (_trustedFilesEnabled)
+		{
+			try
+			{
+				_session->GenericOperation(OperationCode::DisableTrustedFilesOperations);
+				_trustedFilesEnabled = false;
+			}
+			catch(const std::exception& ex)
+			{ error("DisableTrustedFilesOperations failed: ", ex.what()); }
+		}
 		try
 		{ _session->GenericOperation(OperationCode::EndTrustedAppSession); }
 		catch(const std::exception& ex)
 		{ error("EndTrustedAppSession failed: ", ex.what()); }
+	}
+
+	void TrustedApp::DisableTrustedFiles()
+	{
+		_session->GenericOperation(OperationCode::DisableTrustedFilesOperations);
+		_trustedFilesEnabled = false;
 	}
 
 	TrustedAppPtr TrustedApp::Create(const SessionPtr & session, const std::string &mtpzDataPath)
@@ -446,6 +458,7 @@ namespace mtp
 		//HexDump("device response", response);
 
 		ByteArray cmacKey = _keys->VerifyResponse(response, challenge);
+		_cmacKey = cmacKey;  // Store for re-enabling trusted files later
 
 		// Extract device's unique RSA public key from the decrypted payload
 		// (done inside VerifyResponse, stored in _keys)
@@ -464,7 +477,20 @@ namespace mtp
 		u32 cmac[4];
 		_keys->SignSessionRequest(cmac, cmacKey);
 		_session->EnableSecureFileOperations(cmac);
+		_trustedFilesEnabled = true;
 		debug("handshake finished");
+	}
+
+	void TrustedApp::EnableTrustedFiles()
+	{
+		if (_cmacKey.empty() || !_keys)
+			throw std::runtime_error("Cannot re-enable trusted files: MTPZ handshake not completed");
+
+		u32 cmac[4];
+		_keys->SignSessionRequest(cmac, _cmacKey);
+		_session->EnableSecureFileOperations(cmac);
+		_trustedFilesEnabled = true;
+		debug("re-enabled trusted files via SetSessionGUID");
 	}
 
 	ByteArray TrustedApp::ExtractDeviceRSAKey(const ByteArray& response)
@@ -637,6 +663,12 @@ namespace mtp
 
 	void TrustedApp::Authenticate()
 	{ }
+
+	void TrustedApp::DisableTrustedFiles()
+	{ throw std::runtime_error("MTPZ not enabled"); }
+
+	void TrustedApp::EnableTrustedFiles()
+	{ throw std::runtime_error("MTPZ not enabled"); }
 
 	ByteArray TrustedApp::EncryptWiFiPassword(const std::string &password)
 	{ throw std::runtime_error("MTPZ not enabled"); }

@@ -42,6 +42,8 @@ namespace mtp
 		SessionPtr	_session;
 		KeysPtr		_keys;
 		ByteArray	_deviceRSAModulus;  // Device's unique RSA public key
+		ByteArray	_cmacKey;           // CMAC key from MTPZ handshake (for re-enabling)
+		volatile bool	_trustedFilesEnabled = false;
 
 	public:
 		static bool Probe(const SessionPtr & session);
@@ -56,6 +58,12 @@ namespace mtp
 
 		bool HasDeviceKey() const
 		{ return !_deviceRSAModulus.empty(); }
+
+		bool IsTrustedFilesEnabled() const
+		{ return _trustedFilesEnabled; }
+
+		void DisableTrustedFiles();
+		void EnableTrustedFiles();
 
 		ByteArray EncryptWiFiPassword(const std::string &password);
 

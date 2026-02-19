@@ -79,6 +79,8 @@ namespace cli
 		static std::string GetMtpzDataPath();
 
 	public:
+		mtp::TrustedAppPtr GetTrustedApp() const { return _trustedApp; }
+
 		Session(const mtp::SessionPtr &session, bool showPrompt);
 		~Session();
 

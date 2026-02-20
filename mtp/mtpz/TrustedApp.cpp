@@ -63,18 +63,19 @@ namespace mtp
 		{ error("EndTrustedAppSession failed: ", ex.what()); }
 	}
 
-	void TrustedApp::DisableTrustedFiles()
-	{
-		_session->GenericOperation(OperationCode::DisableTrustedFilesOperations);
-		_trustedFilesEnabled = false;
-	}
-
 	TrustedAppPtr TrustedApp::Create(const SessionPtr & session, const std::string &mtpzDataPath)
 	{
 		return TrustedAppPtr(Probe(session)? new TrustedApp(session, mtpzDataPath): nullptr);
 	}
 
 #ifdef MTPZ_ENABLED
+
+	void TrustedApp::DisableTrustedFiles()
+	{
+		if (!_trustedFilesEnabled) return;
+		_session->GenericOperation(OperationCode::DisableTrustedFilesOperations);
+		_trustedFilesEnabled = false;
+	}
 
 	struct TrustedApp::Keys
 	{
@@ -458,7 +459,6 @@ namespace mtp
 		//HexDump("device response", response);
 
 		ByteArray cmacKey = _keys->VerifyResponse(response, challenge);
-		_cmacKey = cmacKey;  // Store for re-enabling trusted files later
 
 		// Extract device's unique RSA public key from the decrypted payload
 		// (done inside VerifyResponse, stored in _keys)
@@ -483,53 +483,7 @@ namespace mtp
 
 	void TrustedApp::EnableTrustedFiles()
 	{
-		if (_cmacKey.empty() || !_keys)
-			throw std::runtime_error("Cannot re-enable trusted files: MTPZ handshake not completed");
-
-		u32 cmac[4];
-		_keys->SignSessionRequest(cmac, _cmacKey);
-		_session->EnableSecureFileOperations(cmac);
-		_trustedFilesEnabled = true;
-		debug("re-enabled trusted files via SetSessionGUID");
-	}
-
-	ByteArray TrustedApp::ExtractDeviceRSAKey(const ByteArray& response)
-	{
-		using namespace mtpz;
-		// Look for the marker pattern: 0x01 0x00 0x80
-		// 0x01 0x00 = exponent 65537 in little-endian
-		// 0x80 = size marker (128 bytes)
-		const u8 marker[] = {MARKER_EXPONENT_LO, MARKER_EXPONENT_HI, MARKER_SIZE};
-
-		debug("searching for device RSA key in ", response.size(), " byte response");
-
-		for (size_t i = 0; i < response.size() - (RSA_MODULUS_SIZE + 3); i++) {
-			if (response[i] == marker[0] &&
-			    response[i+1] == marker[1] &&
-			    response[i+2] == marker[2]) {
-				debug("found marker pattern at offset ", i);
-
-				// Extract 128 bytes after the marker
-				ByteArray modulus;
-				modulus.reserve(RSA_MODULUS_SIZE);
-				for (size_t j = 0; j < RSA_MODULUS_SIZE; j++) {
-					modulus.push_back(response[i + 3 + j]);
-				}
-
-				// Validate: modulus should be 1024 bits (128 bytes)
-				// Little-endian format: FIRST byte is LSB and should be odd
-				debug("modulus size: ", modulus.size(), ", first byte (LE LSB): 0x", std::hex, (int)modulus[0]);
-				if (modulus.size() == RSA_MODULUS_SIZE && (modulus[0] & 1)) {
-					debug("validation passed, returning device modulus");
-					return modulus;
-				} else {
-					debug("validation failed: size=", modulus.size(), " first_byte=0x", std::hex, (int)modulus[0], " (expected odd)");
-				}
-			}
-		}
-
-		debug("marker pattern not found in response");
-		return ByteArray();
+		Authenticate();
 	}
 
 	ByteArray TrustedApp::EncryptWiFiPassword(const std::string &password)

@@ -23,6 +23,7 @@
 #include <mtp/types.h>
 #include <mtp/ByteArray.h>
 #include <string>
+#include <atomic>
 
 namespace mtp
 {
@@ -42,8 +43,7 @@ namespace mtp
 		SessionPtr	_session;
 		KeysPtr		_keys;
 		ByteArray	_deviceRSAModulus;  // Device's unique RSA public key
-		ByteArray	_cmacKey;           // CMAC key from MTPZ handshake (for re-enabling)
-		volatile bool	_trustedFilesEnabled = false;
+		std::atomic<bool>	_trustedFilesEnabled{false};
 
 	public:
 		static bool Probe(const SessionPtr & session);
@@ -70,7 +70,6 @@ namespace mtp
 	private:
 		TrustedApp(const SessionPtr & session, const std::string & mtpzDataPath);
 		static KeysPtr LoadKeys(const std::string & path);
-		ByteArray ExtractDeviceRSAKey(const ByteArray& response);
 
 	};
 }

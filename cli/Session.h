@@ -81,7 +81,8 @@ namespace cli
 	public:
 		mtp::TrustedAppPtr GetTrustedApp() const { return _trustedApp; }
 
-		Session(const mtp::SessionPtr &session, bool showPrompt);
+		Session(const mtp::SessionPtr &session, bool showPrompt,
+				const std::string& mtpzDataPath = "");
 		~Session();
 
 		bool SetFirstStorage();

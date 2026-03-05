@@ -143,7 +143,7 @@ namespace mtp { namespace usb
 		if (!in || !out || !interrupt)
 			throw std::runtime_error("invalid endpoint");
 
-		return std::make_shared<BulkPipe>(device, conf, interface, in, out, interrupt, claimToken);
+		return std::make_shared<BulkPipe>(device, conf, interface, in, out, interrupt, claimToken, true);
 	}
 
 }}

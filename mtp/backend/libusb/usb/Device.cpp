@@ -32,11 +32,7 @@ namespace mtp { namespace usb
 	}
 
 	void Device::Reset()
-	{
-		try { USB_CALL(libusb_reset_device(_handle)); }
-		catch (std::exception & ex)
-		{ error("libusb_reset_device failed: ", ex.what()); }
-	}
+	{ }
 
 	Device::~Device()
 	{
@@ -58,6 +54,7 @@ namespace mtp { namespace usb
 	InterfaceToken::InterfaceToken(libusb_device_handle *handle, int index): _handle(handle), _index(index)
 	{
 		USB_CALL(libusb_claim_interface(handle, index));
+		USB_CALL(libusb_set_interface_alt_setting(handle, index, 0));
 	}
 
 	InterfaceToken::~InterfaceToken()
@@ -66,36 +63,47 @@ namespace mtp { namespace usb
 	InterfaceTokenPtr Device::ClaimInterface(const InterfacePtr & interface)
 	{ return std::make_shared<InterfaceToken>(_handle, interface->GetIndex()); }
 
-	void Device::WriteBulk(const EndpointPtr & ep, const IObjectInputStreamPtr &inputStream, int timeout)
+	void Device::WriteBulk(const EndpointPtr & ep, const IObjectInputStreamPtr &inputStream, int)
 	{
-		ByteArray data(inputStream->GetSize());
-		inputStream->Read(data.data(), data.size());
-		int tr = 0;
-		USB_CALL(libusb_bulk_transfer(_handle, ep->GetAddress(), const_cast<u8 *>(data.data()), data.size(), &tr, timeout));
-		if (tr != (int)data.size())
-			throw std::runtime_error("short write");
+		size_t transferSize = ep->GetMaxPacketSize();
+		ByteArray buffer(transferSize);
+		size_t bytesRead;
+		do
+		{
+			bytesRead = inputStream->Read(buffer.data(), buffer.size());
+			int tr = 0;
+			USB_CALL(libusb_bulk_transfer(_handle, ep->GetAddress(),
+				const_cast<u8*>(buffer.data()), bytesRead, &tr, 0));
+		}
+		while(bytesRead == transferSize);
 	}
 
-	void Device::ReadBulk(const EndpointPtr & ep, const IObjectOutputStreamPtr &outputStream, int timeout)
+	void Device::ReadBulk(const EndpointPtr & ep, const IObjectOutputStreamPtr &outputStream, int)
 	{
-		ByteArray data(ep->GetMaxPacketSize() * 1024);
+		size_t transferSize = ep->GetMaxPacketSize();
+		ByteArray buffer(transferSize);
 		int tr;
 		do
 		{
-			USB_CALL(libusb_bulk_transfer(_handle, ep->GetAddress(), data.data(), data.size(), &tr, timeout));
-			outputStream->Write(data.data(), tr);
+			tr = 0;
+			USB_CALL(libusb_bulk_transfer(_handle, ep->GetAddress(), buffer.data(), buffer.size(), &tr, 0));
+			outputStream->Write(buffer.data(), tr);
 		}
-		while(tr == (int)data.size());
+		while(tr == (int)transferSize);
 	}
 
 	void Device::ReadControl(u8 type, u8 req, u16 value, u16 index, ByteArray &data, int timeout)
 	{
-		USB_CALL(libusb_control_transfer(_handle, type, req, value, index, data.data(), data.size(), timeout));
+		int r = libusb_control_transfer(_handle, type, req, value, index, data.data(), data.size(), timeout);
+		if (r == LIBUSB_ERROR_NO_DEVICE) throw DeviceNotFoundException();
+		if (r < 0) throw Exception("libusb_control_transfer", r);
 	}
 
 	void Device::WriteControl(u8 type, u8 req, u16 value, u16 index, const ByteArray &data, int timeout)
 	{
-		USB_CALL(libusb_control_transfer(_handle, type, req, value, index, const_cast<u8 *>(data.data()), data.size(), timeout));
+		int r = libusb_control_transfer(_handle, type, req, value, index, const_cast<u8 *>(data.data()), data.size(), timeout);
+		if (r == LIBUSB_ERROR_NO_DEVICE) throw DeviceNotFoundException();
+		if (r < 0) throw Exception("libusb_control_transfer", r);
 	}
 
 	void Device::ClearHalt(const EndpointPtr & ep)

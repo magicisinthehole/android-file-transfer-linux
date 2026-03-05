@@ -41,6 +41,7 @@ namespace mtp { namespace usb
 
 	Context::~Context()
 	{
+		_devices.clear();
 		libusb_exit(_ctx);
 	}
 

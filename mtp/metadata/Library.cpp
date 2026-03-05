@@ -304,7 +304,7 @@ namespace mtp
 				auto response = _session->SendObjectPropList(_storage, _artistsFolder, ObjectFormat::Artist, 0, propList);
 				artist->Id = response.ObjectId;
 
-				std::cout << "  ✓ Metadata artist object created (ID: 0x" << std::hex << artist->Id << std::dec << ")" << std::endl;
+				std::cout << "  [OK] Metadata artist object created (ID: 0x" << std::hex << artist->Id << std::dec << ")" << std::endl;
 
 				// Send empty object data (0 bytes) - required by MTP protocol
 				ByteArray empty_data;
@@ -320,7 +320,7 @@ namespace mtp
 						0,                      // groupCode
 						0                       // depth
 					);
-					std::cout << "  ✓ Retrieved " << propList.size() << " bytes of property data from device" << std::endl;
+					std::cout << "  [OK] Retrieved " << propList.size() << " bytes of property data from device" << std::endl;
 				} catch (const std::exception& e) {
 					std::cout << "  Warning: GetObjectPropertyList failed: " << e.what() << std::endl;
 				}
@@ -430,7 +430,7 @@ namespace mtp
 		std::cout << "  Calling Operation 0x922A with track name: " << track_name << std::endl;
 		try {
 			_session->Operation922a(track_name);
-			std::cout << "  ✓ Operation 0x922A completed - track context registered" << std::endl;
+			std::cout << "  [OK] Operation 0x922A completed - track context registered" << std::endl;
 		} catch (const std::exception& e) {
 			error("ValidateArtistGuid: Operation 0x922A failed: ", e.what());
 		}
@@ -701,7 +701,7 @@ namespace mtp
 				ObjectProperty::ArtistId,
 				(u64)new_artist->Id.Id
 			);
-			debug("  ✓ Album ArtistId property updated on device");
+			debug("  [OK] Album ArtistId property updated on device");
 		} else {
 			// For devices without artist support, update artist name string
 			_session->SetObjectProperty(
@@ -709,7 +709,7 @@ namespace mtp
 				ObjectProperty::Artist,
 				new_artist->Name
 			);
-			debug("  ✓ Album Artist property (string) updated on device");
+			debug("  [OK] Album Artist property (string) updated on device");
 		}
 	}
 
@@ -740,7 +740,7 @@ namespace mtp
 				ObjectProperty::ArtistId,
 				(u64)new_artist->Id.Id
 			);
-			debug("  ✓ Track ArtistId property updated");
+			debug("  [OK] Track ArtistId property updated");
 		} else {
 			// For devices without artist support, update artist name string
 			_session->SetObjectProperty(
@@ -748,7 +748,7 @@ namespace mtp
 				ObjectProperty::Artist,
 				new_artist->Name
 			);
-			debug("  ✓ Track Artist property (string) updated");
+			debug("  [OK] Track Artist property (string) updated");
 		}
 	}
 

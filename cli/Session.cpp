@@ -1219,9 +1219,9 @@ namespace cli
 		
 		try {
 			_session->SetDeviceProperty((DeviceProperty)propCode, guid_data);
-			print("✅ Successfully set property!");
+			print("[OK] Successfully set property!");
 		} catch (const std::exception& e) {
-			error("❌ Failed to set property: ", e.what());
+			error("[FAIL] Failed to set property: ", e.what());
 		}
 	}
 
@@ -1235,16 +1235,16 @@ namespace cli
 		// Enable wireless sync (from capture frame 1225)
 		print("  → Operation 0x9230(1) - enable wireless sync");
 		_session->EnableWirelessSync();
-		print("  ✓ Operation 0x9230(1) succeeded");
+		print("  [OK] Operation 0x9230(1) succeeded");
 
 		// Post-enable operation (from capture frame 1229)
 		print("  → Operation 0x922b(3,1,0) - post-enable operation");
 		_session->Operation922b(3, 1, 0);
-		print("  ✓ Operation 0x922b(3,1,0) succeeded");
+		print("  [OK] Operation 0x922b(3,1,0) succeeded");
 
-		print("✅ Wireless sync enabled successfully!");
+		print("[OK] Wireless sync enabled successfully!");
 	} catch (const std::exception& e) {
-		error("❌ Failed to enable wireless sync: ", e.what());
+		error("[FAIL] Failed to enable wireless sync: ", e.what());
 	}
 }
 
@@ -1256,9 +1256,9 @@ namespace cli
 
 	try {
 		_session->DisableWirelessSync();
-		print("✅ Wireless sync disabled successfully!");
+		print("[OK] Wireless sync disabled successfully!");
 	} catch (const std::exception& e) {
-		error("❌ Failed to disable wireless sync: ", e.what());
+		error("[FAIL] Failed to disable wireless sync: ", e.what());
 	}
 }
 
@@ -1270,7 +1270,7 @@ namespace cli
 
 	try {
 		ByteArray response = _session->GetWiFiNetworkList();
-		print("✅ WiFi network list retrieved successfully!");
+		print("[OK] WiFi network list retrieved successfully!");
 
 		// Parse and display network list
 		if (!response.empty()) {
@@ -1332,7 +1332,7 @@ namespace cli
 			}
 		}
 	} catch (const std::exception& e) {
-		error("❌ Failed to get WiFi network list: ", e.what());
+		error("[FAIL] Failed to get WiFi network list: ", e.what());
 	}
 }
 
@@ -1344,7 +1344,7 @@ namespace cli
 
 	try {
 		if (!_trustedApp || !_trustedApp->KeysLoaded()) {
-			error("❌ MTPZ authentication required for WiFi configuration");
+			error("[FAIL] MTPZ authentication required for WiFi configuration");
 			return;
 		}
 
@@ -1383,7 +1383,7 @@ namespace cli
 		}
 
 		if (!foundNetwork) {
-			print("⚠️  Network not found in scan, using default WPA2 security flags");
+			print("[WARN]  Network not found in scan, using default WPA2 security flags");
 		}
 
 		// Build WiFi configuration data structure (324 bytes total)
@@ -1444,46 +1444,46 @@ namespace cli
 		print("Preparing device for WiFi configuration...");
 		print("  → Operation 0x9224 (pre-WiFi preparation)");
 		_session->Operation9224();
-		print("  ✓ Operation 0x9224 succeeded");
+		print("  [OK] Operation 0x9224 succeeded");
 
 		// Send WiFi configuration
 		print("Sending WiFi configuration to device...");
 		print("  → Operation 0x9227 (set WiFi configuration, ", configData.size(), " bytes)");
 		_session->SetWiFiConfiguration(configData);
-		print("  ✓ WiFi configuration sent successfully");
+		print("  [OK] WiFi configuration sent successfully");
 
 		// Post-WiFi operations (from capture frames 803-815)
 		print("Finalizing WiFi configuration...");
 		print("  → Operation 0x9228(0) - post-WiFi operation #1");
 		_session->Operation9228(0);
-		print("  ✓ Operation 0x9228(0) succeeded");
+		print("  [OK] Operation 0x9228(0) succeeded");
 
 		print("  → Operation 0x9228(2) - post-WiFi operation #2");
 		_session->Operation9228(2);
-		print("  ✓ Operation 0x9228(2) succeeded");
+		print("  [OK] Operation 0x9228(2) succeeded");
 
 		print("  → Operation 0x9228(2) - post-WiFi operation #3");
 		_session->Operation9228(2);
-		print("  ✓ Operation 0x9228(2) succeeded");
+		print("  [OK] Operation 0x9228(2) succeeded");
 
 		print("  → Operation 0x9228(2) - post-WiFi operation #4");
 		_session->Operation9228(2);
-		print("  ✓ Operation 0x9228(2) succeeded");
+		print("  [OK] Operation 0x9228(2) succeeded");
 
 		// Read device property (from capture frames 819, 827) - op 0x1015 = GetDevicePropValue, NOT Reset!
 		print("  → GetDevicePropValue(0xd217) - read property #1");
 		_session->GetDeviceProperty((DeviceProperty)0xd217);
-		print("  ✓ GetDevicePropValue(0xd217) succeeded");
+		print("  [OK] GetDevicePropValue(0xd217) succeeded");
 
 		print("  → GetDevicePropValue(0xd217) - read property #2");
 		_session->GetDeviceProperty((DeviceProperty)0xd217);
-		print("  ✓ GetDevicePropValue(0xd217) succeeded");
+		print("  [OK] GetDevicePropValue(0xd217) succeeded");
 
-		print("✅ WiFi network configured successfully!");
+		print("[OK] WiFi network configured successfully!");
 		print("Device should now connect to: ", ssid);
 
 	} catch (const std::exception& e) {
-		error("❌ Failed to set WiFi network: ", e.what());
+		error("[FAIL] Failed to set WiFi network: ", e.what());
 	}
 }
 }

@@ -38,6 +38,7 @@ namespace mtp { namespace usb
 	{
 		libusb_device_handle *handle;
 		USB_CALL(libusb_open(_dev, &handle));
+		libusb_set_auto_detach_kernel_driver(handle, 1);
 		return std::make_shared<Device>(context, handle);
 	}
 
@@ -45,7 +46,10 @@ namespace mtp { namespace usb
 	{
 		libusb_device_handle *handle;
 		int r = libusb_open(_dev, &handle);
-		return r == 0? std::make_shared<Device>(context, handle): nullptr;
+		if (r != 0)
+			return nullptr;
+		libusb_set_auto_detach_kernel_driver(handle, 1);
+		return std::make_shared<Device>(context, handle);
 	}
 
 	DeviceDescriptor::~DeviceDescriptor()

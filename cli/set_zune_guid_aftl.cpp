@@ -93,7 +93,7 @@ int main() {
 		mtp::TrustedAppPtr trustedApp = mtp::TrustedApp::Create(session, GetMtpzDataPath());
 		if (trustedApp) {
 			trustedApp->Authenticate();
-			std::cout << "✅ MTPZ authentication successful!" << std::endl;
+			std::cout << "[OK] MTPZ authentication successful!" << std::endl;
 		} else {
 			std::cerr << "Warning: Could not create TrustedApp" << std::endl;
 		}
@@ -106,9 +106,9 @@ int main() {
 		std::cout << "Setting property 0xd401 (Synchronization Partner)..." << std::endl;
 		try {
 			session->SetDeviceProperty((mtp::DeviceProperty)0xd401, guid_data);
-			std::cout << "✅ Successfully set property 0xd401!" << std::endl;
+			std::cout << "[OK] Successfully set property 0xd401!" << std::endl;
 		} catch (const std::exception& e) {
-			std::cerr << "❌ Failed to set 0xd401: " << e.what() << std::endl;
+			std::cerr << "[FAIL] Failed to set 0xd401: " << e.what() << std::endl;
 		}
 		std::cout << std::endl;
 
@@ -116,9 +116,9 @@ int main() {
 		std::cout << "Setting property 0xd220 (PC GUID)..." << std::endl;
 		try {
 			session->SetDeviceProperty((mtp::DeviceProperty)0xd220, guid_data);
-			std::cout << "✅ Successfully set property 0xd220!" << std::endl;
+			std::cout << "[OK] Successfully set property 0xd220!" << std::endl;
 		} catch (const std::exception& e) {
-			std::cerr << "❌ Failed to set 0xd220: " << e.what() << std::endl;
+			std::cerr << "[FAIL] Failed to set 0xd220: " << e.what() << std::endl;
 		}
 		std::cout << std::endl;
 

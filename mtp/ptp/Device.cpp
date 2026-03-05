@@ -111,6 +111,26 @@ namespace mtp
 
 #ifdef USB_BACKEND_LIBUSB
 				std::string name = iface->GetName();
+				if (name.empty() || name.find("MTP") == name.npos) {
+					try {
+						ByteArray data = usb::DeviceRequest(device).GetDescriptor(usb::DescriptorType::String, 0, 0);
+						if (data.size() >= 4 && data[1] == (u8)usb::DescriptorType::String) {
+							u16 langId = data[2] | ((u16)data[3] << 8);
+							data = usb::DeviceRequest(device).GetDescriptor(usb::DescriptorType::String,
+								static_cast<u8>(usb::DeviceRequest::Request::GetOSStringDescriptor), langId);
+							if (data.size() >= 0x12 && data.at(2) == 'M' && data.at(4) == 'S'
+								&& data.at(6) == 'F' && data.at(8) == 'T') {
+								u8 command = data.at(0x10);
+								data.resize(255);
+								device->ReadControl(
+									static_cast<u8>(usb::RequestType::DeviceToHost | usb::RequestType::Vendor | usb::RequestType::Device),
+									command, 0, 4, data, usb::BaseRequest::DefaultTimeout);
+								if (data.at(0x12) == 'M' && data.at(0x13) == 'T' && data.at(0x14) == 'P')
+									name = "MTP";
+							}
+						}
+					} catch (const std::exception &) {}
+				}
 #else
 				ByteArray data = usb::DeviceRequest(device).GetDescriptor(usb::DescriptorType::String, 0, 0);
 				HexDump("languages", data);

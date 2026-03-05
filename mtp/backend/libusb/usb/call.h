@@ -21,10 +21,15 @@
 #define AFTL_MTP_BACKEND_LIBUSB_USB_CALL_H
 
 #include <usb/Exception.h>
+#include <mtp/usb/DeviceNotFoundException.h>
 
 #include <libusb.h>
 
-#define USB_CALL(...) do { int r = (__VA_ARGS__); if (r != 0) throw mtp::usb::Exception(#__VA_ARGS__, r) ; } while(false)
+#define USB_CALL(...) do { \
+	int r = (__VA_ARGS__); \
+	if (r == LIBUSB_ERROR_NO_DEVICE) throw mtp::usb::DeviceNotFoundException(); \
+	if (r != 0) throw mtp::usb::Exception(#__VA_ARGS__, r); \
+} while(false)
 
 #endif
 

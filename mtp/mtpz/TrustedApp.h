@@ -23,6 +23,7 @@
 #include <mtp/types.h>
 #include <mtp/ByteArray.h>
 #include <string>
+#include <array>
 #include <atomic>
 
 namespace mtp
@@ -52,6 +53,10 @@ namespace mtp
 
 		static TrustedAppPtr Create(const SessionPtr & session, const std::string &mtpzDataPath);
 		void Authenticate();
+
+		/// MTPZ challenge/response, returns the 4 CMAC values without calling Op9214.
+		/// For XNA deployment: pass the returned CMAC to Op9220 instead of Op9214.
+		std::array<u32, 4> AuthenticateForXna();
 
 		bool KeysLoaded() const
 		{ return !!_keys; }

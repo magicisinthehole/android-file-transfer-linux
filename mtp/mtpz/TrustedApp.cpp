@@ -486,6 +486,37 @@ namespace mtp
 		Authenticate();
 	}
 
+	std::array<u32, 4> TrustedApp::AuthenticateForXna()
+	{
+		if (!_keys)
+			throw std::runtime_error("MTPZ keys not loaded");
+
+		auto & di = _session->GetDeviceInfo();
+		if (di.Supports(DeviceProperty::SessionInitiatorVersionInfo))
+			_session->SetDeviceProperty(DeviceProperty::SessionInitiatorVersionInfo,
+			"Android File Transfer for Linux - MTPZClassDriver");
+
+		_session->GenericOperation(OperationCode::EndTrustedAppSession);
+
+		ByteArray challenge, message;
+		std::tie(challenge, message) = _keys->GenerateCertificateMessage();
+		_session->GenericOperation(OperationCode::SendWMDRMPDAppRequest, message);
+
+		ByteArray response = _session->GenericOperation(OperationCode::GetWMDRMPDAppResponse);
+
+		ByteArray cmacKey = _keys->VerifyResponse(response, challenge);
+
+		ByteArray signature = _keys->SignResponse(cmacKey);
+		_session->GenericOperation(OperationCode::SendWMDRMPDAppRequest, signature);
+
+		// Compute the same CMAC that Authenticate() passes to Op9214.
+		// For XNA, the caller passes this to Op9220 instead.
+		std::array<u32, 4> cmac;
+		_keys->SignSessionRequest(cmac.data(), cmacKey);
+		debug("MTPZ authentication complete — CMAC ready for Op9220");
+		return cmac;
+	}
+
 	ByteArray TrustedApp::EncryptWiFiPassword(const std::string &password)
 	{
 		using namespace mtpz;

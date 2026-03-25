@@ -41,7 +41,7 @@ namespace mtp
 
 
 #define CHECK_RESPONSE(RCODE) do { \
-	if ((RCODE) != ResponseType::OK && (RCODE) != ResponseType::SessionAlreadyOpen) \
+	if ((RCODE) != ResponseType::OK && (RCODE) != ResponseType::SessionAlreadyOpen && (RCODE) != ResponseType::XnaOK) \
 		throw InvalidResponseException(__func__, (RCODE)); \
 } while(false)
 
@@ -93,6 +93,11 @@ namespace mtp
 		// Phase 2 operations
 		_deviceInfo.OperationsSupported.push_back((OperationCode)0x9214);
 		_deviceInfo.OperationsSupported.push_back((OperationCode)0x9219);
+		// XNA deployment operations
+		_deviceInfo.OperationsSupported.push_back((OperationCode)0x9220);
+		_deviceInfo.OperationsSupported.push_back((OperationCode)0x9221);
+		_deviceInfo.OperationsSupported.push_back((OperationCode)0x9222);
+		_deviceInfo.OperationsSupported.push_back((OperationCode)0x9223);
 
 			_deviceInfo.OperationsSupported.push_back(OperationCode::SetDevicePropValue);  // Needed for QueryDevicePropertyViaSet
 			_deviceInfo.OperationsSupported.push_back(OperationCode::ResetDevicePropValue);
@@ -873,6 +878,43 @@ namespace mtp
 		ByteArray response;
 		auto stream = std::make_shared<ByteArrayObjectInputStream>(data);
 		RunTransactionWithDataRequest(_defaultTimeout, (OperationCode)0x922a, response, stream);
+	}
+
+	ByteArray Session::Operation9220()
+	{
+		// XNA session open probe (no params) — expected to return AccessDenied (0x200F) if MTPZ not done
+		// We catch the exception since the probe is expected to fail
+		try {
+			return RunTransaction(_defaultTimeout, (OperationCode)0x9220);
+		} catch (const InvalidResponseException &) {
+			return ByteArray();  // empty = session not open
+		}
+	}
+
+	ByteArray Session::Operation9220(u32 guid0, u32 guid1, u32 guid2, u32 guid3)
+	{
+		// XNA session open with GUID — returns XnaOK (0xA221) on success
+		return RunTransaction(_defaultTimeout, (OperationCode)0x9220, guid0, guid1, guid2, guid3);
+	}
+
+	void Session::Operation9221()
+	{
+		// XNA session close
+		RunTransaction(_defaultTimeout, (OperationCode)0x9221);
+	}
+
+	ByteArray Session::Operation9222(const ByteArray &data)
+	{
+		// XNA write data — host sends data to device over secure channel
+		IObjectInputStreamPtr inputStream = std::make_shared<ByteArrayObjectInputStream>(data);
+		ByteArray response;
+		return RunTransactionWithDataRequest(_defaultTimeout, (OperationCode)0x9222, response, inputStream);
+	}
+
+	ByteArray Session::Operation9223()
+	{
+		// XNA read data — poll device for data. Returns empty if nothing ready.
+		return RunTransaction(_defaultTimeout, (OperationCode)0x9223);
 	}
 
 	void Session::SetTrackRatingsByAlbum(

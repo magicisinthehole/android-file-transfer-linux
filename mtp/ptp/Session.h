@@ -184,6 +184,13 @@ namespace mtp
 	ByteArray Operation922d(u32 param1, u32 param2);  // Cleanup/polling - sometimes returns DATA
 	void Operation922a(const std::string &album_name);  // Register album context for metadata retrieval
 
+	// XNA deployment operations (0x9220-0x9223)
+	ByteArray Operation9220();  // XNA session probe (no params, expect AccessDenied if MTPZ not done)
+	ByteArray Operation9220(u32 guid0, u32 guid1, u32 guid2, u32 guid3);  // XNA session open with GUID
+	void Operation9221();  // XNA session close
+	ByteArray Operation9222(const ByteArray &data);  // XNA write data to device
+	ByteArray Operation9223();  // XNA read/poll data from device
+
 	// Rating updates: SetObjectReferences per album + 0x922f
 	// album_mtp_ids: Album MTP object IDs (schema byte 0x06)
 	// tracks_per_album: Corresponding track IDs for each album (schema byte 0x01)

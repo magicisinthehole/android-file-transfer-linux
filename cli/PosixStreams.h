@@ -24,12 +24,37 @@
 
 #include <functional>
 
-#include <sys/types.h>
-#include <sys/stat.h>
-#include <fcntl.h>
-#include <stdio.h>
-#include <unistd.h>
-#include <utime.h>
+#ifdef _WIN32
+	#include <io.h>
+	#include <fcntl.h>
+	#include <sys/stat.h>
+	#include <sys/utime.h>
+	#include <stdio.h>
+	#define posix_open(path, flags, ...) _open(path, flags | _O_BINARY, __VA_ARGS__)
+	#define posix_read _read
+	#define posix_write _write
+	#define posix_close _close
+	#define posix_stat _stat
+	#define posix_stat_t struct _stat
+	#define posix_utime _utime
+	#define posix_utimbuf _utimbuf
+	typedef int ssize_t;
+#else
+	#include <sys/types.h>
+	#include <sys/stat.h>
+	#include <fcntl.h>
+	#include <stdio.h>
+	#include <unistd.h>
+	#include <utime.h>
+	#define posix_open open
+	#define posix_read read
+	#define posix_write write
+	#define posix_close close
+	#define posix_stat stat
+	#define posix_stat_t struct stat
+	#define posix_utime utime
+	#define posix_utimbuf utimbuf
+#endif
 
 namespace cli
 {
@@ -67,19 +92,19 @@ namespace cli
 		mtp::u64	_size;
 
 	public:
-		ObjectInputStream(const std::string &fname) : _fd(open(fname.c_str(), O_RDONLY))
+		ObjectInputStream(const std::string &fname) : _fd(posix_open(fname.c_str(), O_RDONLY))
 		{
 			if (_fd < 0)
 				throw std::runtime_error("cannot open file: " + fname);
 
-			struct stat st;
-			if (stat(fname.c_str(), &st) != 0)
+			posix_stat_t st;
+			if (posix_stat(fname.c_str(), &st) != 0)
 				throw std::runtime_error("stat failed");
 			_size = st.st_size;
 		}
 
 		~ObjectInputStream()
-		{ close(_fd); }
+		{ posix_close(_fd); }
 
 		mtp::u64 GetSize() const
 		{ return _size; }
@@ -87,7 +112,7 @@ namespace cli
 		virtual size_t Read(mtp::u8 *data, size_t size)
 		{
 			CheckCancelled();
-			ssize_t r = read(_fd, data, size);
+			ssize_t r = posix_read(_fd, data, size);
 			if (r < 0)
 				throw std::runtime_error("read failed");
 			Report(r);
@@ -103,19 +128,19 @@ namespace cli
 
 	public:
 		ObjectOutputStream(const std::string &fname) :
-			_fd(open(fname.c_str(), O_WRONLY | O_CREAT | O_TRUNC, 0644))
+			_fd(posix_open(fname.c_str(), O_WRONLY | O_CREAT | O_TRUNC, 0644))
 		{
 			if (_fd < 0)
 				throw std::runtime_error("cannot open file: " + fname);
 		}
 
 		~ObjectOutputStream()
-		{ close(_fd); }
+		{ posix_close(_fd); }
 
 		virtual size_t Write(const mtp::u8 *data, size_t size)
 		{
 			CheckCancelled();
-			ssize_t r = write(_fd, data, size);
+			ssize_t r = posix_write(_fd, data, size);
 			if (r < 0)
 				throw std::runtime_error("write failed");
 			Report(r);
@@ -124,10 +149,10 @@ namespace cli
 
 		static void SetModificationTime(const std::string &fname, time_t mtime)
 		{
-			struct utimbuf buf = {};
+			posix_utimbuf buf = {};
 			buf.actime = time(nullptr);
 			buf.modtime = mtime;
-			if (utime(fname.c_str(), &buf) != 0)
+			if (posix_utime(fname.c_str(), &buf) != 0)
 				throw mtp::system_error("utime");
 		}
 	};

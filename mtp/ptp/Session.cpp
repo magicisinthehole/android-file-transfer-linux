@@ -29,6 +29,14 @@
 #include <array>
 #include <iostream>
 #include <iomanip>
+
+#ifdef _WIN32
+#undef min
+#undef max
+#undef CreateDirectory
+#undef GetObject
+#undef GetVersion
+#endif
 #include <algorithm>
 
 namespace mtp

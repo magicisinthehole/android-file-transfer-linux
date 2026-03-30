@@ -22,6 +22,12 @@
 
 #include <mtp/ptp/IObjectStream.h>
 #include <mtp/ByteArray.h>
+#include <iterator>
+
+#ifdef _WIN32
+#undef min
+#undef max
+#endif
 
 namespace mtp
 {

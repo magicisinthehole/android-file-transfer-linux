@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.10)
 project(android-file-transfer)
 
-set (CMAKE_CXX_STANDARD 11)
+set (CMAKE_CXX_STANDARD 17)
 
 file(READ ${CMAKE_SOURCE_DIR}/README.md README_MD)
 string(REGEX MATCH "version-([0-9a-fA-F.]+)-" _VERSION ${README_MD})

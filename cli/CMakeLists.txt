@@ -49,7 +49,9 @@ else()
 endif()
 
 add_executable(aft-mtp-cli ${CLI_SOURCES})
-target_include_directories(aft-mtp-cli SYSTEM PRIVATE ${Readline_INCLUDE_DIR})
+if (READLINE_FOUND)
+	target_include_directories(aft-mtp-cli SYSTEM PRIVATE ${Readline_INCLUDE_DIR})
+endif()
 target_link_libraries(aft-mtp-cli ${MTP_LIBRARIES} ${CLI_LIBRARIES} ${CMAKE_THREAD_LIBS_INIT})
 install(TARGETS aft-mtp-cli RUNTIME DESTINATION bin)
 

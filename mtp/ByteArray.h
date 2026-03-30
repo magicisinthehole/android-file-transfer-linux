@@ -23,6 +23,8 @@
 #include <mtp/types.h>
 #include <vector>
 #include <memory>
+#include <algorithm>
+#include <iterator>
 
 namespace mtp
 {

@@ -49,8 +49,6 @@ namespace mtp { namespace usb
 
 	void Context::Wait()
 	{
-		// Windows doesn't have an equivalent to libusb_handle_events
-		// Event handling is done per-device via overlapped I/O
 	}
 
 	void Context::EnumerateDevices()

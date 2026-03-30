@@ -38,7 +38,10 @@
 	#define posix_stat_t struct _stat
 	#define posix_utime _utime
 	#define posix_utimbuf _utimbuf
+	#ifndef _SSIZE_T_DEFINED
+	#define _SSIZE_T_DEFINED
 	typedef int ssize_t;
+	#endif
 #else
 	#include <sys/types.h>
 	#include <sys/stat.h>

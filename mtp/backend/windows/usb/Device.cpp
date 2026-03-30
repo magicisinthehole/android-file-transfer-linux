@@ -57,22 +57,17 @@ namespace mtp { namespace usb
 			throw std::runtime_error("WinUsb_ResetPipe failed: Invalid handle");
 		}
 
-		// WinUSB doesn't have a direct reset device equivalent
-		// We reset individual pipes instead
 		debug("Windows USB Device: Reset requested (resetting pipes)");
 	}
 
 	int Device::GetConfiguration() const
 	{
-		// WinUSB doesn't expose configuration index directly
-		// Typically devices have only one configuration (index 1)
+		// WinUSB doesn't expose configuration index — assume default
 		return 1;
 	}
 
 	void Device::SetConfiguration(int idx)
 	{
-		// WinUSB doesn't allow changing configuration
-		// Configuration is set when the device is opened
 		debug("Windows USB Device: SetConfiguration(", idx, ") - not supported by WinUSB");
 	}
 
@@ -273,7 +268,6 @@ namespace mtp { namespace usb
 			return std::string();
 		}
 
-		// Get string descriptor
 		UCHAR buffer[256];
 		ULONG bytesRead = 0;
 
@@ -292,24 +286,21 @@ namespace mtp { namespace usb
 			return std::string();
 		}
 
-		// USB string descriptors are UTF-16LE
-		// First byte is length, second is descriptor type
 		UCHAR length = buffer[0];
 		if (length > bytesRead)
-		{
 			length = static_cast<UCHAR>(bytesRead);
-		}
 
-		// Convert UTF-16LE to ASCII (simplified conversion)
-		std::string str;
-		for (UCHAR i = 2; i < length; i += 2)
-		{
-			if (buffer[i] >= 32 && buffer[i] < 127)
-			{
-				str += static_cast<char>(buffer[i]);
-			}
-		}
+		int wcharCount = (length - 2) / 2;
+		if (wcharCount <= 0)
+			return std::string();
 
+		const wchar_t* wstr = reinterpret_cast<const wchar_t*>(buffer + 2);
+		int utf8Size = WideCharToMultiByte(CP_UTF8, 0, wstr, wcharCount, NULL, 0, NULL, NULL);
+		if (utf8Size <= 0)
+			return std::string();
+
+		std::string str(utf8Size, '\0');
+		WideCharToMultiByte(CP_UTF8, 0, wstr, wcharCount, &str[0], utf8Size, NULL, NULL);
 		return str;
 	}
 

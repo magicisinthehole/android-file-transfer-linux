@@ -17,39 +17,15 @@
     Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA
 */
 
-#ifndef AFTL_MTP_BACKEND_WINDOWS_USB_CONTEXT_H
-#define AFTL_MTP_BACKEND_WINDOWS_USB_CONTEXT_H
+#ifndef AFTL_MTP_BACKEND_WINDOWS_USB_WIN_COMPAT_H
+#define AFTL_MTP_BACKEND_WINDOWS_USB_WIN_COMPAT_H
 
-#include <mtp/types.h>
-#include <usb/DeviceDescriptor.h>
-#include <vector>
-#include <usb/win_compat.h>
+#include <windows.h>
 
-namespace mtp { namespace usb
-{
-
-	class Context : Noncopyable
-	{
-	public:
-		typedef std::vector<DeviceDescriptorPtr> Devices;
-
-	private:
-		Devices					_devices;
-
-	public:
-		Context(int debugLevel = 0);
-		~Context();
-
-		void Wait();
-
-		const Devices & GetDevices() const
-		{ return _devices; }
-
-	private:
-		void EnumerateDevices();
-	};
-	DECLARE_PTR(Context);
-
-}}
+// windows.h #defines "interface" as "struct" for COM compatibility,
+// which conflicts with C++ identifiers named "interface"
+#ifdef interface
+#undef interface
+#endif
 
 #endif

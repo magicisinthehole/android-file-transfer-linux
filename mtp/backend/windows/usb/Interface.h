@@ -22,14 +22,9 @@
 
 #include <mtp/types.h>
 #include <usb/Device.h>
-#include <windows.h>
+#include <usb/win_compat.h>
 #include <winusb.h>
 #include <vector>
-
-// Undefine Windows macros that conflict with C++ identifiers
-#ifdef interface
-#undef interface
-#endif
 
 namespace mtp { namespace usb
 {

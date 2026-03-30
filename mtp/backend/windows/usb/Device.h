@@ -25,13 +25,8 @@
 #include <mtp/Token.h>
 #include <mtp/types.h>
 #include <mtp/usb/types.h>
-#include <windows.h>
+#include <usb/win_compat.h>
 #include <winusb.h>
-
-// Undefine Windows macros that conflict with C++ identifiers
-#ifdef interface
-#undef interface
-#endif
 
 namespace mtp { namespace usb
 {

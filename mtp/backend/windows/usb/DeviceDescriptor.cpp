@@ -147,47 +147,9 @@ namespace mtp { namespace usb
 
 	ConfigurationPtr DeviceDescriptor::GetConfiguration(int conf, DevicePtr openDevice)
 	{
-		// Use already-open device handle if provided
-		HANDLE deviceHandle = INVALID_HANDLE_VALUE;
-		WINUSB_INTERFACE_HANDLE winusbHandle = NULL;
-		bool needsCleanup = false;
+		HANDLE deviceHandle = openDevice->GetHandle();
+		WINUSB_INTERFACE_HANDLE winusbHandle = openDevice->GetWinUsbHandle();
 		BOOL result;
-
-		if (openDevice)
-		{
-			// Use the handles from the already-open device
-			deviceHandle = openDevice->GetHandle();
-			winusbHandle = openDevice->GetWinUsbHandle();
-		}
-		else
-		{
-			// Open device temporarily to query configuration
-			std::wstring wDevicePath(_devicePath.begin(), _devicePath.end());
-
-			deviceHandle = CreateFileW(
-				wDevicePath.c_str(),
-				GENERIC_WRITE | GENERIC_READ,
-				FILE_SHARE_WRITE | FILE_SHARE_READ,
-				NULL,
-				OPEN_EXISTING,
-				FILE_ATTRIBUTE_NORMAL | FILE_FLAG_OVERLAPPED,
-				NULL
-			);
-
-			if (deviceHandle == INVALID_HANDLE_VALUE)
-			{
-				throw std::runtime_error("Failed to open device for configuration query");
-			}
-
-			BOOL result = WinUsb_Initialize(deviceHandle, &winusbHandle);
-
-			if (!result)
-			{
-				CloseHandle(deviceHandle);
-				throw std::runtime_error("WinUsb_Initialize failed for configuration query");
-			}
-			needsCleanup = true;
-		}
 
 		// Create configuration object
 		USB_CONFIGURATION_DESCRIPTOR configDesc;
@@ -302,20 +264,7 @@ namespace mtp { namespace usb
 			configDesc.bNumInterfaces = 1;
 		}
 
-		// Only clean up if we opened the device ourselves
-		if (needsCleanup)
-		{
-			WinUsb_Free(winusbHandle);
-			CloseHandle(deviceHandle);
-		}
-
 		return configPtr;
-	}
-
-	ConfigurationPtr DeviceDescriptor::GetConfiguration(int conf)
-	{
-		// Call the overload with nullptr to open device temporarily
-		return GetConfiguration(conf, nullptr);
 	}
 
 	ByteArray DeviceDescriptor::GetDescriptor() const

@@ -23,14 +23,9 @@
 #include <mtp/types.h>
 #include <usb/Device.h>
 #include <usb/Interface.h>
-#include <windows.h>
+#include <usb/win_compat.h>
 #include <winusb.h>
 #include <string>
-
-// Undefine Windows macros that conflict with C++ identifiers
-#ifdef interface
-#undef interface
-#endif
 
 namespace mtp { namespace usb
 {
@@ -90,7 +85,6 @@ namespace mtp { namespace usb
 		int GetConfigurationsCount() const
 		{ return _descriptor.bNumConfigurations; }
 
-		ConfigurationPtr GetConfiguration(int conf);
 		ConfigurationPtr GetConfiguration(int conf, DevicePtr openDevice);
 
 		ByteArray GetDescriptor() const;

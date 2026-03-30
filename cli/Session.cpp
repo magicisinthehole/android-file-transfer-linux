@@ -40,12 +40,43 @@
 
 #include <string.h>
 #include <stdlib.h>
+#include <errno.h>
+
+#ifdef _WIN32
+#include <windows.h>
+#include <io.h>
+#include <direct.h>
+#include <sys/types.h>
+#include <sys/stat.h>
+#undef CreateDirectory
+#undef GetObject
+#define stat _stat
+#define mkdir(path, mode) _mkdir(path)
+#define S_ISDIR(m) (((m) & _S_IFMT) == _S_IFDIR)
+#define S_ISREG(m) (((m) & _S_IFMT) == _S_IFREG)
+struct dirent { char d_name[MAX_PATH]; };
+struct WIN_DIR { HANDLE hFind; WIN32_FIND_DATAA data; bool first; };
+#define DIR WIN_DIR
+static DIR* opendir(const char* name) {
+	auto* d = new DIR; std::string p = std::string(name) + "\\*";
+	d->hFind = FindFirstFileA(p.c_str(), &d->data); d->first = true;
+	if (d->hFind == INVALID_HANDLE_VALUE) { delete d; return nullptr; }
+	return d;
+}
+static struct dirent* readdir(DIR* d) {
+	static struct dirent e;
+	if (!d) return nullptr;
+	if (d->first) { d->first = false; } else { if (!FindNextFileA(d->hFind, &d->data)) return nullptr; }
+	strncpy(e.d_name, d->data.cFileName, MAX_PATH); return &e;
+}
+static int closedir(DIR* d) { if (d) { FindClose(d->hFind); delete d; } return 0; }
+#else
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <sys/ioctl.h>
 #include <dirent.h>
-#include <errno.h>
 #include <unistd.h>
+#endif
 
 namespace
 {

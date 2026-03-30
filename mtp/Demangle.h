@@ -20,7 +20,11 @@
 #ifndef AFTL_MTP_DEMANGLE_H
 #define AFTL_MTP_DEMANGLE_H
 
+#ifdef _MSC_VER
+#include <string>
+#else
 #include <cxxabi.h>
+#endif
 #include <stdlib.h>
 
 namespace mtp
@@ -28,12 +32,16 @@ namespace mtp
 	//! demangles c++ symbol
 	inline std::string Demangle(const char *abiName)
 	{
+#ifdef _MSC_VER
+		return std::string(abiName);
+#else
 		int status;
 		char *ret = abi::__cxa_demangle(abiName, 0, 0, &status);
 
 		std::string name(ret);
 		free(ret);
 		return name;
+#endif
 	}
 }
 

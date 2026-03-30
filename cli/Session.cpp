@@ -406,7 +406,7 @@ namespace cli
 		using namespace mtp;
 		if (_interactive && _showPrompt)
 		{
-			print("android file transfer for linux version ", this->GetVersion());
+			print("android file transfer for linux version ", mtp::GetVersion());
 			print(_gdi.Manufacturer, " ", _gdi.Model, " ", _gdi.DeviceVersion);
 			print("extensions: ", _gdi.VendorExtensionDesc);
 			//print(_gdi.SerialNumber); //non-secure

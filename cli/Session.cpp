@@ -50,10 +50,14 @@
 #include <sys/stat.h>
 #undef CreateDirectory
 #undef GetObject
+#undef GetVersion
 #define stat _stat
 #define mkdir(path, mode) _mkdir(path)
 #define S_ISDIR(m) (((m) & _S_IFMT) == _S_IFDIR)
 #define S_ISREG(m) (((m) & _S_IFMT) == _S_IFREG)
+#define strncasecmp _strnicmp
+#define STDOUT_FILENO _fileno(stdout)
+#define isatty _isatty
 struct dirent { char d_name[MAX_PATH]; };
 struct WIN_DIR { HANDLE hFind; WIN32_FIND_DATAA data; bool first; };
 #define DIR WIN_DIR

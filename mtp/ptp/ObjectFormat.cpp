@@ -22,6 +22,9 @@
 #include <algorithm>
 #include <ctype.h>
 #include <map>
+#ifdef _WIN32
+#include <compat.h>
+#endif
 
 #ifdef HAVE_LIBMAGIC
 #	include <magic.h>

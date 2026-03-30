@@ -2,6 +2,9 @@
 #include <algorithm>
 #include <sstream>
 #include <ctype.h>
+#ifdef _WIN32
+#include <compat.h>
+#endif
 
 namespace mtp { namespace msg
 {

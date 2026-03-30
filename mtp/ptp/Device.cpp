@@ -92,7 +92,13 @@ namespace mtp
 
 		for(int i = 0; i < confs; ++i)
 		{
+#ifdef _WIN32
+			// WinUSB holds an exclusive handle — reuse the open device
+			// to avoid a second CreateFileW that would fail
+			usb::ConfigurationPtr conf = desc->GetConfiguration(i, device);
+#else
 			usb::ConfigurationPtr conf = desc->GetConfiguration(i);
+#endif
 			int interfaces = conf->GetInterfaceCount();
 			if (interfaces == 0) {
 				debug("device not configured (no interfaces), setting configuration now...");
@@ -100,7 +106,11 @@ namespace mtp
 				conf.reset();
 				device->SetConfiguration(index);
 				debug("device configured, retrieving configuration descriptor again...");
+#ifdef _WIN32
+				conf = desc->GetConfiguration(i, device);
+#else
 				conf = desc->GetConfiguration(i);
+#endif
 				interfaces = conf->GetInterfaceCount();
 			}
 			debug("interfaces: ", interfaces);

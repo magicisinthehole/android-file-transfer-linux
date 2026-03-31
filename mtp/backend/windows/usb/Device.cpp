@@ -62,7 +62,6 @@ namespace mtp { namespace usb
 
 	int Device::GetConfiguration() const
 	{
-		// WinUSB doesn't expose configuration index — assume default
 		return 1;
 	}
 

@@ -284,6 +284,13 @@ namespace mtp
 		return ParseResponse<msg::SendObjectPropListResponse>(responseData);
 	}
 
+	void Session::SetObjectPropList(const ByteArray & propList)
+	{
+		ByteArray responseData;
+		IObjectInputStreamPtr inputStream = std::make_shared<ByteArrayObjectInputStream>(propList);
+		RunTransactionWithDataRequest(_defaultTimeout, OperationCode::SetObjectPropList, responseData, inputStream);
+	}
+
 	msg::NewObjectInfo Session::CreateDirectory(const std::string &name, ObjectId parentId, StorageId storageId, AssociationType type)
 	{
 		if (_deviceInfo.Supports(OperationCode::SendObjectPropList))

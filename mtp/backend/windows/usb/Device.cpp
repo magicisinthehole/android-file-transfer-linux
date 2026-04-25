@@ -22,6 +22,7 @@
 #include <usb/Interface.h>
 #include <mtp/ByteArray.h>
 #include <mtp/log.h>
+#include <mtp/usb/TimeoutException.h>
 #include <stdexcept>
 
 namespace mtp { namespace usb
@@ -121,6 +122,8 @@ namespace mtp { namespace usb
 		if (!result)
 		{
 			DWORD lastError = GetLastError();
+			if (lastError == ERROR_SEM_TIMEOUT)
+				throw TimeoutException("WriteBulk timeout");
 			throw std::runtime_error("WinUsb_WritePipe failed with error: " + std::to_string(lastError));
 		}
 
@@ -165,7 +168,7 @@ namespace mtp { namespace usb
 				DWORD lastError = GetLastError();
 				if (lastError == ERROR_SEM_TIMEOUT)
 				{
-					throw std::runtime_error("ReadBulk timeout");
+					throw TimeoutException("ReadBulk timeout");
 				}
 				throw std::runtime_error("WinUsb_ReadPipe failed with error: " + std::to_string(lastError));
 			}

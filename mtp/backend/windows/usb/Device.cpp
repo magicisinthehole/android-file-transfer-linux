@@ -23,7 +23,6 @@
 #include <mtp/ByteArray.h>
 #include <mtp/log.h>
 #include <mtp/usb/TimeoutException.h>
-#include <algorithm>
 #include <stdexcept>
 
 namespace mtp { namespace usb
@@ -172,7 +171,9 @@ namespace mtp { namespace usb
 		// Smaller chunks return promptly per burst so the layer above can
 		// iterate through queued data.
 		const size_t packetSize = ep->GetMaxPacketSize();
-		const size_t chunkSize = std::max(packetSize, (size_t)4096 / packetSize * packetSize);
+		size_t chunkSize = (size_t)4096 / packetSize * packetSize;
+		if (chunkSize < packetSize)
+			chunkSize = packetSize;
 		ByteArray buffer(chunkSize);
 		ULONG bytesRead = 0;
 

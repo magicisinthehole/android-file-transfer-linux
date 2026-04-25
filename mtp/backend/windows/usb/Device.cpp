@@ -101,11 +101,21 @@ namespace mtp { namespace usb
 		ByteArray data(size);
 		inputStream->Read(data.data(), size);
 
-		// Set timeout policy
-		if (timeout > 0)
+		// Bulk pipes get the WinUSB default (0 = infinite, kernel does not cancel).
+		// macOS IOKit and Linux usbdevfs both block until the device responds; on
+		// Windows, an app-set PIPE_TRANSFER_TIMEOUT makes the kernel cancel the
+		// transfer mid-flight, which loses bytes the device already clocked onto
+		// the bus and breaks MTP transport state. Only honor the timeout for
+		// interrupt pipes, where ReadInterrupt depends on responsive polling.
+		if (timeout > 0 && ep->GetType() == EndpointType::Interrupt)
 		{
 			ULONG timeoutMs = static_cast<ULONG>(timeout);
 			WinUsb_SetPipePolicy(_winusbHandle, ep->GetAddress(), PIPE_TRANSFER_TIMEOUT, sizeof(ULONG), &timeoutMs);
+		}
+		else if (ep->GetType() == EndpointType::Bulk)
+		{
+			ULONG zero = 0;
+			WinUsb_SetPipePolicy(_winusbHandle, ep->GetAddress(), PIPE_TRANSFER_TIMEOUT, sizeof(ULONG), &zero);
 		}
 
 		// Perform bulk write
@@ -141,15 +151,27 @@ namespace mtp { namespace usb
 			throw std::runtime_error("ReadBulk failed: Invalid WinUSB handle");
 		}
 
-		// Set timeout policy
-		if (timeout > 0)
+		// See WriteBulk above — only interrupt pipes get an enforced timeout.
+		if (timeout > 0 && ep->GetType() == EndpointType::Interrupt)
 		{
 			ULONG timeoutMs = static_cast<ULONG>(timeout);
 			WinUsb_SetPipePolicy(_winusbHandle, ep->GetAddress(), PIPE_TRANSFER_TIMEOUT, sizeof(ULONG), &timeoutMs);
 		}
+		else if (ep->GetType() == EndpointType::Bulk)
+		{
+			ULONG zero = 0;
+			WinUsb_SetPipePolicy(_winusbHandle, ep->GetAddress(), PIPE_TRANSFER_TIMEOUT, sizeof(ULONG), &zero);
+		}
 
-		// Read in chunks until we get a short packet
-		ByteArray buffer(ep->GetMaxPacketSize() * 1024);
+		// Read one MaxPacketSize at a time, looping until a short packet ends
+		// the transfer. Mirrors the macOS IOKit backend (Device.cpp in
+		// backend/darwin) and is intentional: a single huge ReadPipe pends the
+		// pipe until short-packet-or-timeout, which deadlocks PipePacketer's
+		// transaction-matching loop when the device queues unrelated frames
+		// ahead of the matching response. Per-packet reads return promptly so
+		// the loop above this layer can iterate through queued data.
+		const size_t packetSize = ep->GetMaxPacketSize();
+		ByteArray buffer(packetSize);
 		ULONG bytesRead = 0;
 
 		do
@@ -178,7 +200,7 @@ namespace mtp { namespace usb
 				outputStream->Write(buffer.data(), bytesRead);
 			}
 		}
-		while (bytesRead == buffer.size()); // Continue while we receive full packets
+		while (bytesRead == packetSize); // Continue while packets are full-size
 	}
 
 	void Device::ReadControl(u8 type, u8 req, u16 value, u16 index, ByteArray &data, int timeout)

@@ -118,29 +118,49 @@ namespace mtp { namespace usb
 			WinUsb_SetPipePolicy(_winusbHandle, ep->GetAddress(), PIPE_TRANSFER_TIMEOUT, sizeof(ULONG), &zero);
 		}
 
-		// Perform bulk write
-		ULONG bytesWritten = 0;
-		BOOL result = WinUsb_WritePipe(
-			_winusbHandle,
-			ep->GetAddress(),
-			const_cast<u8*>(data.data()),
-			static_cast<ULONG>(data.size()),
-			&bytesWritten,
-			NULL
-		);
+		// Write in chunks sized like the Linux usbdevfs URB (4 KB). One huge
+		// WinUsb_WritePipe pipelines all packets back-to-back at full USB
+		// speed, which can overrun the device's bulk-OUT FIFO when several
+		// transactions stack up — observed as the 6th batched 922c hanging
+		// forever waiting for FIFO space. Smaller transfers give the device's
+		// firmware breathing room between submissions, matching Linux's
+		// effective pacing.
+		const size_t packetSize = ep->GetMaxPacketSize();
+		size_t chunkSize = (size_t)4096 / packetSize * packetSize;
+		if (chunkSize < packetSize)
+			chunkSize = packetSize;
 
-		if (!result)
+		size_t offset = 0;
+		while (offset < data.size())
 		{
-			DWORD lastError = GetLastError();
-			if (lastError == ERROR_SEM_TIMEOUT)
-				throw TimeoutException("WriteBulk timeout");
-			throw std::runtime_error("WinUsb_WritePipe failed with error: " + std::to_string(lastError));
-		}
+			size_t remaining = data.size() - offset;
+			size_t chunkBytes = remaining < chunkSize ? remaining : chunkSize;
+			ULONG thisChunk = static_cast<ULONG>(chunkBytes);
+			ULONG bytesWritten = 0;
+			BOOL result = WinUsb_WritePipe(
+				_winusbHandle,
+				ep->GetAddress(),
+				const_cast<u8*>(data.data()) + offset,
+				thisChunk,
+				&bytesWritten,
+				NULL
+			);
 
-		if (bytesWritten != data.size())
-		{
-			throw std::runtime_error("Short write: expected " + std::to_string(data.size()) +
-			                        " bytes, wrote " + std::to_string(bytesWritten));
+			if (!result)
+			{
+				DWORD lastError = GetLastError();
+				if (lastError == ERROR_SEM_TIMEOUT)
+					throw TimeoutException("WriteBulk timeout");
+				throw std::runtime_error("WinUsb_WritePipe failed with error: " + std::to_string(lastError));
+			}
+
+			if (bytesWritten != thisChunk)
+			{
+				throw std::runtime_error("Short write: expected " + std::to_string(thisChunk) +
+				                        " bytes, wrote " + std::to_string(bytesWritten));
+			}
+
+			offset += bytesWritten;
 		}
 	}
 

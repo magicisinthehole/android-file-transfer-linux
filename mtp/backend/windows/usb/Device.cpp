@@ -23,6 +23,7 @@
 #include <mtp/ByteArray.h>
 #include <mtp/log.h>
 #include <mtp/usb/TimeoutException.h>
+#include <algorithm>
 #include <stdexcept>
 
 namespace mtp { namespace usb
@@ -163,15 +164,16 @@ namespace mtp { namespace usb
 			WinUsb_SetPipePolicy(_winusbHandle, ep->GetAddress(), PIPE_TRANSFER_TIMEOUT, sizeof(ULONG), &zero);
 		}
 
-		// Read one MaxPacketSize at a time, looping until a short packet ends
-		// the transfer. Mirrors the macOS IOKit backend (Device.cpp in
-		// backend/darwin) and is intentional: a single huge ReadPipe pends the
-		// pipe until short-packet-or-timeout, which deadlocks PipePacketer's
-		// transaction-matching loop when the device queues unrelated frames
-		// ahead of the matching response. Per-packet reads return promptly so
-		// the loop above this layer can iterate through queued data.
+		// Read in chunks sized to match the Linux usbdevfs backend
+		// (max(MaxPacketSize, 4096-rounded-down-to-MaxPacketSize)). A single
+		// 512 KB ReadPipe pends the pipe until short-packet-or-timeout, which
+		// deadlocks PipePacketer's transaction-matching loop when the device
+		// queues unrelated PPP/TCP frames ahead of the matching response.
+		// Smaller chunks return promptly per burst so the layer above can
+		// iterate through queued data.
 		const size_t packetSize = ep->GetMaxPacketSize();
-		ByteArray buffer(packetSize);
+		const size_t chunkSize = std::max(packetSize, (size_t)4096 / packetSize * packetSize);
+		ByteArray buffer(chunkSize);
 		ULONG bytesRead = 0;
 
 		do
@@ -200,7 +202,7 @@ namespace mtp { namespace usb
 				outputStream->Write(buffer.data(), bytesRead);
 			}
 		}
-		while (bytesRead == packetSize); // Continue while packets are full-size
+		while (bytesRead == chunkSize); // Continue while the chunk filled
 	}
 
 	void Device::ReadControl(u8 type, u8 req, u16 value, u16 index, ByteArray &data, int timeout)

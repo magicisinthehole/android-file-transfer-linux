@@ -116,6 +116,15 @@ namespace mtp { namespace usb
 		{
 			ULONG zero = 0;
 			WinUsb_SetPipePolicy(_winusbHandle, ep->GetAddress(), PIPE_TRANSFER_TIMEOUT, sizeof(ULONG), &zero);
+
+			// SHORT_PACKET_TERMINATE: emit a ZLP after writes whose size is an
+			// exact multiple of MaxPacketSize. macOS IOKit and Linux usbdevfs do
+			// this by default; WinUSB does not. Without the ZLP, the device
+			// keeps the transfer "open" and never sends its MTP response, which
+			// then hangs the next WinUsb_ReadPipe forever. Required for any
+			// MTP write whose size happens to land on a packet boundary.
+			UCHAR enable = TRUE;
+			WinUsb_SetPipePolicy(_winusbHandle, ep->GetAddress(), SHORT_PACKET_TERMINATE, sizeof(UCHAR), &enable);
 		}
 
 		// Perform bulk write
